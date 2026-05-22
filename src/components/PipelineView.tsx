@@ -25,13 +25,36 @@ interface PipelineData {
   updated_at: string;
 }
 
+interface PipelineRunRecord {
+  id: string;
+  idea_id: string;
+  stage: string;
+  agent_id: string | null;
+  status: string;
+  output_data: string | null;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+interface PipelineApiResponse {
+  pipeline_runs: PipelineRunRecord[];
+}
+
 const STAGE_DEFS = [
   { key: "intent_analysis", label: "意图分析", icon: "🎯" },
-  { key: "code_review", label: "代码审查", icon: "🔍" },
-  { key: "requirement_gen", label: "需求生成", icon: "📝" },
-  { key: "document_review", label: "文档审核", icon: "📋" },
-  { key: "publish", label: "发布", icon: "🚀" },
+  { key: "doc_generation", label: "需求生成", icon: "📝" },
 ] as const;
+
+const STAGE_LABELS: Record<string, string> = {
+  intent_analysis: "意图分析",
+  doc_generation: "需求生成",
+  code_review: "代码审查",
+  requirement_gen: "需求生成",
+  document_review: "文档审核",
+  publish: "发布",
+};
 
 type StageStatus = PipelineStage["status"];
 
@@ -65,8 +88,8 @@ export default function PipelineView({ ideaId }: { ideaId: string }) {
         return;
       }
       if (!res.ok) throw new Error("加载流水线失败");
-      const data: PipelineData = await res.json();
-      setPipeline(data);
+      const data: PipelineApiResponse = await res.json();
+      setPipeline(transformPipelineResponse(data));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -81,7 +104,7 @@ export default function PipelineView({ ideaId }: { ideaId: string }) {
 
   /* ---- poll when running ---- */
   useEffect(() => {
-    const hasRunning = pipeline?.stages.some((s) => s.status === "running");
+    const hasRunning = pipeline?.stages?.some((s) => s.status === "running");
     if (hasRunning) {
       pollRef.current = setInterval(fetchPipeline, 3000);
     } else {
@@ -228,17 +251,18 @@ export default function PipelineView({ ideaId }: { ideaId: string }) {
   }
 
   /* ---- find stage status helper ---- */
+  const stages = pipeline.stages ?? [];
+
   const getStageStatus = (key: string): StageStatus => {
-    const found = pipeline.stages.find((s) => s.stage === key);
+    const found = stages.find((s) => s.stage === key);
     return found?.status ?? "not_started";
   };
 
   const getStageData = (key: string): PipelineStage | undefined => {
-    return pipeline.stages.find((s) => s.stage === key);
+    return stages.find((s) => s.stage === key);
   };
 
-  const hasRunning = pipeline.stages.some((s) => s.status === "running");
-  const failedStage = pipeline.stages.find((s) => s.status === "failed");
+  const hasRunning = stages.some((s) => s.status === "running");
 
   /* ---- render ---- */
   return (
@@ -418,7 +442,7 @@ export default function PipelineView({ ideaId }: { ideaId: string }) {
       </div>
 
       {/* Global action */}
-      {!hasRunning && !pipeline.stages.some((s) => s.status === "gate_waiting") && (
+      {!hasRunning && !stages.some((s) => s.status === "gate_waiting") && (
         <div className="flex justify-center pt-1">
           <button
             onClick={startPipeline}
@@ -437,6 +461,79 @@ export default function PipelineView({ ideaId }: { ideaId: string }) {
 }
 
 /* ───────── Helpers ───────── */
+
+function mapRunStatus(status: string): StageStatus {
+  switch (status) {
+    case "pending":
+      return "not_started";
+    case "running":
+      return "running";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "gate_waiting":
+      return "gate_waiting";
+    default:
+      return "not_started";
+  }
+}
+
+function tryParseJson(raw: string): Record<string, unknown> | undefined {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function transformPipelineResponse(data: PipelineApiResponse): PipelineData | null {
+  const runs = data.pipeline_runs ?? [];
+  if (runs.length === 0) return null;
+
+  const stageMap = new Map<string, PipelineRunRecord>();
+  for (const run of runs) {
+    stageMap.set(run.stage, run);
+  }
+
+  const stages: PipelineStage[] = Array.from(stageMap.entries()).map(([stage, run]) => ({
+    stage,
+    label: STAGE_LABELS[stage] ?? stage,
+    agent: run.agent_id ?? undefined,
+    status: mapRunStatus(run.status),
+    output: run.output_data ? tryParseJson(run.output_data) : undefined,
+    error: run.error ?? undefined,
+    started_at: run.started_at ?? undefined,
+    completed_at: run.completed_at ?? undefined,
+  }));
+
+  const hasRunning = stages.some((s) => s.status === "running");
+  const hasFailed = stages.some((s) => s.status === "failed");
+  const allCompleted = stages.length > 0 && stages.every((s) => s.status === "completed");
+
+  let status = "in_progress";
+  if (hasRunning) status = "running";
+  else if (hasFailed) status = "failed";
+  else if (allCompleted) status = "completed";
+
+  const currentStage =
+    stages.find((s) => s.status === "running")?.stage ??
+    stages.find((s) => s.status !== "completed" && s.status !== "failed")?.stage ??
+    stages[stages.length - 1]?.stage ??
+    "";
+
+  const lastRun = runs[runs.length - 1];
+
+  return {
+    id: runs[0].idea_id,
+    idea_id: runs[0].idea_id,
+    status,
+    current_stage: currentStage,
+    stages,
+    created_at: runs[0].created_at,
+    updated_at: lastRun.completed_at ?? lastRun.created_at,
+  };
+}
 
 function formatTime(iso: string) {
   const d = new Date(iso + "Z");

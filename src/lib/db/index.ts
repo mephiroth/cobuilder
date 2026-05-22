@@ -16,10 +16,25 @@ function getDb(): any {
   _db.exec('PRAGMA foreign_keys = ON');
 
   // Create tables
-  const schema = fs.readFileSync(
-    path.join(process.cwd(), 'src', 'lib', 'db', 'schema.sql'),
-    'utf-8'
-  );
+  // Embedded schema - works in both dev and production builds
+  const schema = `-- CoBuilder Schema
+CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, codebase_dir TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS ideas (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', votes INTEGER NOT NULL DEFAULT 0, author_name TEXT NOT NULL DEFAULT '匿名', author_contact TEXT, client_id TEXT, clarification_doc TEXT, version TEXT, screenshots TEXT DEFAULT '[]', source TEXT NOT NULL DEFAULT 'web', visible INTEGER NOT NULL DEFAULT 0, moderation_status TEXT DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), author_name TEXT NOT NULL DEFAULT '匿名', content TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0, visible INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS votes (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), voter_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(idea_id, voter_id));
+CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), target_client_id TEXT NOT NULL, status TEXT NOT NULL, read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS pipeline_runs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), stage TEXT NOT NULL, agent_id TEXT, status TEXT NOT NULL DEFAULT 'pending', input_data TEXT, output_data TEXT, error TEXT, started_at TEXT, completed_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS requirement_docs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), version INTEGER NOT NULL DEFAULT 1, content TEXT NOT NULL, generated_by TEXT, reviewed INTEGER NOT NULL DEFAULT 0, review_decision TEXT, review_comments TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_ideas_project ON ideas(project_id);
+CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
+CREATE INDEX IF NOT EXISTS idx_ideas_visible ON ideas(visible);
+CREATE INDEX IF NOT EXISTS idx_ideas_votes ON ideas(votes DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_idea ON comments(idea_id);
+CREATE INDEX IF NOT EXISTS idx_votes_idea ON votes(idea_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_client ON notifications(target_client_id, read);
+CREATE INDEX IF NOT EXISTS idx_pipeline_idea ON pipeline_runs(idea_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_stage ON pipeline_runs(stage, status);
+CREATE INDEX IF NOT EXISTS idx_requirement_idea ON requirement_docs(idea_id);`;
   const statements = schema.split(';').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
   for (const stmt of statements) {
     try {
@@ -163,7 +178,7 @@ export function listIdeas(filters?: {
     sql += ' LIMIT ?';
     params.push(filters.limit);
   }
-  if (filters?.offset) {
+  if (filters?.offset !== undefined) {
     sql += ' OFFSET ?';
     params.push(filters.offset);
   }
@@ -181,7 +196,9 @@ export function countIdeas(projectId?: string, status?: string): number {
 }
 
 export function updateIdea(id: string, updates: Partial<Idea>): void {
-  const fields = Object.keys(updates).filter(k => k !== 'id' && k !== 'created_at');
+  const ALLOWED = ['title','description','status','votes','author_name','author_contact',
+    'client_id','clarification_doc','version','screenshots','source','visible','moderation_status'];
+  const fields = Object.keys(updates).filter(k => ALLOWED.includes(k));
   if (fields.length === 0) return;
   const sets = fields.map(f => `${f} = ?`).join(', ');
   const values = fields.map(f => (updates as Record<string, any>)[f]);
@@ -307,7 +324,8 @@ export function getPipelineRuns(ideaId: string): PipelineRun[] {
 }
 
 export function updatePipelineRun(id: string, updates: Partial<PipelineRun>): void {
-  const fields = Object.keys(updates).filter(k => k !== 'id' && k !== 'created_at');
+  const ALLOWED = ['stage','agent_id','status','input_data','output_data','error','started_at','completed_at'];
+  const fields = Object.keys(updates).filter(k => ALLOWED.includes(k));
   if (fields.length === 0) return;
   const sets = fields.map(f => `${f} = ?`).join(', ');
   const values = fields.map(f => (updates as Record<string, any>)[f]);

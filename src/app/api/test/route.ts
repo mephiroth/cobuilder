@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
+import { verifyAdmin, adminResponse } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!verifyAdmin(request)) {
+    return adminResponse('Unauthorized');
+  }
+
   try {
     const { listProjects } = await import('@/lib/db');
     const projects = listProjects();
@@ -10,8 +15,7 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json({
       ok: false,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      error: 'Internal server error',
     }, { status: 500 });
   }
 }

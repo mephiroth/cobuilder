@@ -6,7 +6,7 @@ interface Comment {
   id: string;
   author_name: string;
   content: string;
-  is_admin: boolean;
+  is_admin: number;
   created_at: string;
 }
 

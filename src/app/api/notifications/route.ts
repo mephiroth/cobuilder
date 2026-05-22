@@ -1,9 +1,14 @@
 import { NextRequest } from 'next/server';
 import { getUnreadNotifications } from '@/lib/db';
+import { verifyAdmin, adminResponse } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  if (!verifyAdmin(request)) {
+    return adminResponse('Unauthorized');
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const client_id = searchParams.get('client_id');

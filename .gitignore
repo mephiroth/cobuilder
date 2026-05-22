@@ -33,6 +33,16 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# data
+/data/
+
+# IDE
+.idea/
+.vscode/
+
+# hermes plans
+.herpes/
+
 # vercel
 .vercel
 
