@@ -122,6 +122,15 @@ export function createProject(name: string, codebaseDir: string, description?: s
   return getProject(id)!;
 }
 
+export function updateProject(id: string, updates: { name?: string; codebase_dir?: string; description?: string }): void {
+  const ALLOWED = ['name', 'codebase_dir', 'description'];
+  const fields = Object.keys(updates).filter(k => ALLOWED.includes(k));
+  if (fields.length === 0) return;
+  const sets = fields.map(f => `${f} = ?`).join(', ');
+  const values = fields.map(f => (updates as Record<string, any>)[f]);
+  getDb().prepare(`UPDATE projects SET ${sets} WHERE id = ?`).run(...values, id);
+}
+
 // ===== Ideas =====
 export function createIdea(idea: {
   project_id: string;
