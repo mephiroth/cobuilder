@@ -71,6 +71,14 @@ export default function AdminDashboardPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [batchClarifying, setBatchClarifying] = useState(false);
 
+  // New idea modal state
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newAuthor, setNewAuthor] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -186,6 +194,44 @@ export default function AdminDashboardPage() {
     } else {
       setSortBy(field);
       setSortDir("desc");
+    }
+  };
+
+  const handleCreateIdea = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newDescription.trim() || creating) return;
+    setCreating(true);
+    setCreateError(null);
+
+    try {
+      const headers = {
+        ...getAuthHeaders(),
+        "Content-Type": "application/json",
+      };
+      const res = await fetch("/api/admin/ideas", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          description: newDescription.trim(),
+          author_name: newAuthor.trim() || "管理员",
+        }),
+      });
+
+      if (res.ok) {
+        setShowNewModal(false);
+        setNewTitle("");
+        setNewDescription("");
+        setNewAuthor("");
+        fetchData();
+      } else {
+        const data = await res.json();
+        setCreateError(data.error || "创建失败，请重试");
+      }
+    } catch {
+      setCreateError("网络错误，请重试");
+    } finally {
+      setCreating(false);
     }
   };
 
