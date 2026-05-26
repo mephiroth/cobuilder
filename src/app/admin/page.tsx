@@ -236,6 +236,7 @@ export default function AdminDashboardPage() {
   };
 
   return (
+    <>
     <div className="space-y-6 animate-fade-in">
       {/* Stats Cards */}
       {stats && (
@@ -281,6 +282,15 @@ export default function AdminDashboardPage() {
               批量 AI 澄清 ({selectedIds.size})
             </button>
           )}
+          <button
+            onClick={() => { setShowNewModal(true); setCreateError(null); }}
+            className="inline-flex items-center gap-1.5 bg-paper hover:bg-cream border border-border text-ink text-sm font-medium px-3 py-1.5 rounded-lg transition-all"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            新建想法
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted">排序:</span>
@@ -484,5 +494,90 @@ export default function AdminDashboardPage() {
         </div>
       )}
     </div>
+
+    {/* New Idea Modal */}
+    {showNewModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div
+          className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+          onClick={() => setShowNewModal(false)}
+        />
+        <div className="relative bg-paper rounded-xl border border-border shadow-lg w-full max-w-lg animate-fade-in">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+            <h2 className="font-serif text-base font-bold text-ink">新建想法</h2>
+            <button
+              onClick={() => setShowNewModal(false)}
+              className="p-1 rounded-lg hover:bg-cream text-muted hover:text-ink transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <form onSubmit={handleCreateIdea} className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1.5">
+                标题 <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="简短描述这个想法"
+                autoFocus
+                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1.5">
+                详细描述 <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder="详细说明这个想法的背景、目标和预期效果..."
+                rows={5}
+                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-ink mb-1.5">
+                提交人
+              </label>
+              <input
+                type="text"
+                value={newAuthor}
+                onChange={(e) => setNewAuthor(e.target.value)}
+                placeholder="留空则显示为「管理员」"
+                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
+              />
+            </div>
+            {createError && (
+              <p className="text-sm text-red-500">{createError}</p>
+            )}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowNewModal(false)}
+                className="px-4 py-2 text-sm text-muted hover:text-ink transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={!newTitle.trim() || !newDescription.trim() || creating}
+                className="inline-flex items-center gap-1.5 bg-gold hover:bg-gold-light disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+              >
+                {creating ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : null}
+                创建想法
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
