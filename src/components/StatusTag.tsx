@@ -1,35 +1,51 @@
-import React from "react";
-
-const STATUS_MAP: Record<
-  string,
-  { label: string; bg: string; text: string }
-> = {
-  pending: { label: "待澄清", bg: "bg-amber-100", text: "text-amber-700" },
-  clarified: { label: "已澄清", bg: "bg-blue-100", text: "text-blue-700" },
-  in_progress: { label: "进行中", bg: "bg-amber-200", text: "text-amber-800" },
-  published: { label: "已发布", bg: "bg-green-100", text: "text-green-700" },
-  deferred: { label: "搁置", bg: "bg-gray-100", text: "text-gray-600" },
-  closed: { label: "已关闭", bg: "bg-gray-200", text: "text-gray-600" },
-};
-
 interface StatusTagProps {
   status: string;
   size?: "sm" | "md";
 }
 
-export default function StatusTag({ status, size = "sm" }: StatusTagProps) {
-  const config = STATUS_MAP[status] ?? {
+const STATUS_CONFIG: Record<string, { label: string; className: string; dot: string }> = {
+  pending: {
+    label: "待澄清",
+    className: "badge-pending",
+    dot: "bg-amber-500",
+  },
+  clarified: {
+    label: "已澄清",
+    className: "badge-clarified",
+    dot: "bg-blue-500",
+  },
+  in_progress: {
+    label: "进行中",
+    className: "badge-in_progress",
+    dot: "bg-amber-500",
+  },
+  published: {
+    label: "已实现",
+    className: "badge-published",
+    dot: "bg-green-500",
+  },
+  deferred: {
+    label: "已搁置",
+    className: "badge-deferred",
+    dot: "bg-gray-400",
+  },
+  closed: {
+    label: "已关闭",
+    className: "badge-closed",
+    dot: "bg-gray-500",
+  },
+};
+
+export default function StatusTag({ status, size = "md" }: StatusTagProps) {
+  const config = STATUS_CONFIG[status] ?? {
     label: status,
-    bg: "bg-gray-100",
-    text: "text-gray-600",
+    className: "badge-deferred",
+    dot: "bg-gray-400",
   };
 
-  const sizeClasses = size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm";
-
   return (
-    <span
-      className={`inline-flex items-center rounded-full font-medium ${config.bg} ${config.text} ${sizeClasses}`}
-    >
+    <span className={`badge ${config.className} ${size === "sm" ? "text-[10px] px-1.5 py-0.5" : ""}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${config.dot} flex-shrink-0`} />
       {config.label}
     </span>
   );

@@ -5,6 +5,7 @@ import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import PipelineView from "@/components/PipelineView";
 import RequirementDocViewer from "@/components/RequirementDocViewer";
+import StatusTag from "@/components/StatusTag";
 
 interface Idea {
   id: string;
@@ -51,18 +52,10 @@ function getAuthHeaders(): Record<string, string> {
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + "Z");
-  return d.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return d.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-export default function AdminIdeaEditorPage(props: {
-  params: Promise<{ id: string }>;
-}) {
+export default function AdminIdeaEditorPage(props: { params: Promise<{ id: string }> }) {
   const params = use(props.params);
   const ideaId = params.id;
 
@@ -70,16 +63,14 @@ export default function AdminIdeaEditorPage(props: {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Editable fields
   const [description, setDescription] = useState("");
   const [clarificationDoc, setClarificationDoc] = useState("");
   const [status, setStatus] = useState("");
   const [version, setVersion] = useState("");
   const [visible, setVisible] = useState(false);
 
-  // AI Clarify
   const [clarifying, setClarifying] = useState(false);
   const [clarifyResult, setClarifyResult] = useState<string | null>(null);
 
@@ -88,7 +79,7 @@ export default function AdminIdeaEditorPage(props: {
     try {
       const headers = getAuthHeaders();
       const res = await fetch(`/api/admin/ideas/${ideaId}`, { headers });
-      if (!res.ok) throw new Error("加载想法失败");
+      if (!res.ok) throw new Error("加载失败");
       const data = await res.json();
       setIdea(data);
       setDescription(data.description || "");
@@ -97,36 +88,21 @@ export default function AdminIdeaEditorPage(props: {
       setVersion(data.version || "");
       setVisible(data.visible === 1);
 
-      // Fetch comments
-      const commentsRes = await fetch(`/api/ideas/${ideaId}/comments`, {
-        headers,
-      });
-      if (commentsRes.ok) {
-        setComments(await commentsRes.json());
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
+      const commentsRes = await fetch(`/api/ideas/${ideaId}/comments`, { headers });
+      if (commentsRes.ok) setComments(await commentsRes.json());
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
   }, [ideaId]);
 
-  useEffect(() => {
-    fetchIdea();
-  }, [fetchIdea]);
+  useEffect(() => { fetchIdea(); }, [fetchIdea]);
 
   const handleSave = async () => {
     setSaving(true);
     setSaveMessage(null);
-
     try {
-      const headers = {
-        ...getAuthHeaders(),
-        "Content-Type": "application/json",
-      };
       const res = await fetch(`/api/admin/ideas/${ideaId}`, {
         method: "PATCH",
-        headers,
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           description,
           clarification_doc: clarificationDoc || undefined,
@@ -135,13 +111,11 @@ export default function AdminIdeaEditorPage(props: {
           visible: visible ? 1 : 0,
         }),
       });
-
       if (!res.ok) throw new Error("保存失败");
-
-      setSaveMessage("已保存");
-      setTimeout(() => setSaveMessage(null), 2000);
+      setSaveMessage({ type: "success", text: "已保存" });
+      setTimeout(() => setSaveMessage(null), 2500);
     } catch (e) {
-      setSaveMessage(e instanceof Error ? e.message : "保存失败");
+      setSaveMessage({ type: "error", text: e instanceof Error ? e.message : "保存失败" });
     } finally {
       setSaving(false);
     }
@@ -150,25 +124,14 @@ export default function AdminIdeaEditorPage(props: {
   const handleClarify = async () => {
     setClarifying(true);
     setClarifyResult(null);
-
     try {
-      const headers = {
-        ...getAuthHeaders(),
-        "Content-Type": "application/json",
-      };
       const res = await fetch(`/api/admin/ideas/${ideaId}/clarify`, {
         method: "POST",
-        headers,
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "AI 澄清失败");
-      }
-
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "AI 澄清失败"); }
       const data = await res.json();
       setClarifyResult(data.clarification || data.content || "澄清完成");
-      // Reload to get updated data
       fetchIdea();
     } catch (e) {
       setClarifyResult(`错误: ${e instanceof Error ? e.message : "AI 澄清失败"}`);
@@ -179,74 +142,58 @@ export default function AdminIdeaEditorPage(props: {
 
   const handleDeleteComment = async (commentId: string) => {
     if (!confirm("确定要删除这条评论吗？")) return;
-
     try {
-      const headers = getAuthHeaders();
-      const res = await fetch(`/api/admin/comments/${commentId}`, {
-        method: "DELETE",
-        headers,
-      });
-
-      if (res.ok) {
-        setComments((prev) => prev.filter((c) => c.id !== commentId));
-      }
-    } catch {
-      // ignore
-    }
+      const res = await fetch(`/api/admin/comments/${commentId}`, { method: "DELETE", headers: getAuthHeaders() });
+      if (res.ok) setComments((prev) => prev.filter((c) => c.id !== commentId));
+    } catch { /* ignore */ }
   };
 
   const handleDelete = async () => {
-    if (!confirm("确定要删除这个想法吗？此操作不可撤销。")) return;
-
+    if (!confirm("确定要删除这个需求吗？此操作不可撤销。")) return;
     try {
-      const headers = getAuthHeaders();
-      const res = await fetch(`/api/admin/ideas/${ideaId}`, {
-        method: "DELETE",
-        headers,
-      });
-
-      if (res.ok) {
-        window.location.href = "/admin";
-      }
-    } catch {
-      // ignore
-    }
+      const res = await fetch(`/api/admin/ideas/${ideaId}`, { method: "DELETE", headers: getAuthHeaders() });
+      if (res.ok) window.location.href = "/admin";
+    } catch { /* ignore */ }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+      <div className="space-y-4 animate-fade-in">
+        <div className="skeleton h-7 w-1/2 rounded-lg" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <div className="card p-5 h-40 skeleton" />
+            <div className="card p-5 h-60 skeleton" />
+          </div>
+          <div className="space-y-4">
+            <div className="card p-5 h-40 skeleton" />
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!idea) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted">想法不存在</p>
-        <Link href="/admin" className="text-sm text-gold hover:text-gold-light mt-2 inline-block">
-          返回列表
-        </Link>
+      <div className="empty-state">
+        <p className="text-base font-medium text-ink mb-2">需求不存在</p>
+        <Link href="/admin" className="btn btn-secondary text-sm px-4 py-2">返回列表</Link>
       </div>
     );
   }
 
   const screenshots: string[] = (() => {
-    try {
-      return JSON.parse(idea.screenshots || "[]");
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(idea.screenshots || "[]"); }
+    catch { return []; }
   })();
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Back + Title */}
-      <div className="flex items-center gap-3">
+      {/* Page Header */}
+      <div className="flex items-start gap-3">
         <Link
           href="/admin"
-          className="text-sm text-muted hover:text-ink transition-colors flex items-center gap-1"
+          className="flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors mt-1 flex-shrink-0"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -254,10 +201,13 @@ export default function AdminIdeaEditorPage(props: {
           返回
         </Link>
         <div className="flex-1 min-w-0">
-          <h2 className="font-serif text-lg font-bold text-ink truncate">
-            {idea.title}
-          </h2>
-          <p className="text-xs text-muted mt-0.5">
+          <div className="flex items-start gap-3">
+            <h2 className="font-serif text-xl font-bold text-ink leading-tight flex-1 min-w-0">
+              {idea.title}
+            </h2>
+            <StatusTag status={idea.status} />
+          </div>
+          <p className="text-xs text-muted mt-1">
             by {idea.author_name} · {formatDate(idea.created_at)} · {idea.votes} 票
           </p>
         </div>
@@ -265,35 +215,25 @@ export default function AdminIdeaEditorPage(props: {
 
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Pipeline View */}
+        {/* Left: Main Content */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* Pipeline */}
           <PipelineView ideaId={ideaId} />
 
           {/* Description */}
-          <div className="bg-paper rounded-xl border border-border p-5">
-            <label className="block text-sm font-medium text-ink mb-2">
-              原始描述
-            </label>
+          <div className="card p-5">
+            <label className="block text-sm font-semibold text-ink mb-3">原始描述</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={12}
-              className="w-full px-4 py-3 rounded-lg bg-cream border border-border text-sm text-ink font-mono leading-relaxed focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all resize-none"
+              rows={10}
+              className="input-base font-mono leading-relaxed resize-none"
             />
-            {/* Screenshots Preview */}
             {screenshots.length > 0 && (
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="mt-4 grid grid-cols-3 gap-2">
                 {screenshots.map((url: string, i: number) => (
-                  <div
-                    key={i}
-                    className="aspect-video rounded-lg overflow-hidden bg-cream border border-border"
-                  >
-                    <img
-                      src={url}
-                      alt={`截图 ${i + 1}`}
-                      className="w-full h-full object-cover"
-                    />
+                  <div key={i} className="aspect-video rounded-xl overflow-hidden bg-surface border border-border">
+                    <img src={url} alt={`截图 ${i + 1}`} className="w-full h-full object-cover" />
                   </div>
                 ))}
               </div>
@@ -301,18 +241,16 @@ export default function AdminIdeaEditorPage(props: {
           </div>
 
           {/* Clarification Doc */}
-          <div className="bg-paper rounded-xl border border-border p-5">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-ink">
-                澄清文档
-              </label>
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm font-semibold text-ink">澄清文档</label>
               <button
                 onClick={handleClarify}
                 disabled={clarifying}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-gold hover:text-gold-light disabled:opacity-50 transition-colors"
+                className="btn btn-ghost text-xs text-gold hover:text-gold-light px-2 py-1"
               >
                 {clarifying ? (
-                  <div className="w-3.5 h-3.5 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
+                  <div className="spinner spinner-sm" />
                 ) : (
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -325,70 +263,62 @@ export default function AdminIdeaEditorPage(props: {
               value={clarificationDoc}
               onChange={(e) => setClarificationDoc(e.target.value)}
               placeholder="AI 澄清后的文档将显示在这里，也可以手动编辑..."
-              rows={10}
-              className="w-full px-4 py-3 rounded-lg bg-cream border border-border text-sm text-ink font-mono leading-relaxed focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all resize-none placeholder:text-muted/40"
+              rows={8}
+              className="input-base font-mono leading-relaxed resize-none"
             />
             {clarifyResult && (
-              <div className="mt-3 p-3 rounded-lg bg-gold/5 border border-gold/20">
-                <p className="text-xs font-medium text-gold mb-1">
-                  {clarifyResult.startsWith("错误") ? "操作结果" : "AI 澄清完成"}
+              <div className={`mt-3 p-3 rounded-xl border text-xs ${
+                clarifyResult.startsWith("错误")
+                  ? "bg-red-50 border-red-200 text-error"
+                  : "bg-gold-subtle border-gold-border text-gold"
+              }`}>
+                <p className="font-semibold mb-1">
+                  {clarifyResult.startsWith("错误") ? "操作失败" : "AI 澄清完成"}
                 </p>
-                <div className="prose prose-xs max-w-none text-sm text-ink/70">
+                <div className="prose prose-xs max-w-none text-xs">
                   <ReactMarkdown>{clarifyResult}</ReactMarkdown>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Requirement Doc Viewer */}
+          {/* Requirement Doc */}
           <RequirementDocViewer ideaId={ideaId} />
 
           {/* Comments */}
-          <div className="bg-paper rounded-xl border border-border p-5">
-            <h3 className="text-sm font-medium text-ink mb-4">
-              评论 ({comments.length})
+          <div className="card p-5">
+            <h3 className="text-sm font-semibold text-ink mb-4">
+              评论
+              <span className="ml-1.5 text-xs font-normal text-muted">({comments.length})</span>
             </h3>
             {comments.length === 0 ? (
-              <p className="text-sm text-muted/60">暂无评论</p>
+              <p className="text-sm text-muted-light py-4 text-center">暂无评论</p>
             ) : (
               <div className="space-y-3">
                 {comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className="flex gap-3 p-3 rounded-lg bg-cream"
-                  >
-                    <div className="w-7 h-7 rounded-full bg-paper border border-border flex items-center justify-center shrink-0">
-                      {comment.is_admin ? (
-                        <span className="text-xs font-bold text-gold">管</span>
-                      ) : (
-                        <span className="text-xs text-muted">
-                          {comment.author_name.charAt(0)}
-                        </span>
-                      )}
+                  <div key={comment.id} className="flex gap-3 p-3 rounded-xl bg-surface">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+                      comment.is_admin
+                        ? "bg-gold-subtle text-gold border border-gold-border"
+                        : "bg-surface-hover text-muted border border-border"
+                    }`}>
+                      {comment.is_admin ? "管" : comment.author_name.charAt(0)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-ink">
-                          {comment.author_name}
-                        </span>
+                        <span className="text-xs font-semibold text-ink">{comment.author_name}</span>
                         {comment.is_admin ? (
-                          <span className="px-1 py-0.5 rounded text-[10px] font-medium bg-gold/10 text-gold">
-                            管理员
-                          </span>
+                          <span className="badge badge-clarified text-[10px] px-1.5 py-0.5">管理员</span>
                         ) : null}
-                        <span className="text-[11px] text-muted/70">
-                          {formatDate(comment.created_at)}
-                        </span>
+                        <span className="text-[11px] text-muted-light">{formatDate(comment.created_at)}</span>
                         <button
                           onClick={() => handleDeleteComment(comment.id)}
-                          className="ml-auto text-[11px] text-red-400 hover:text-red-600 transition-colors"
+                          className="ml-auto text-[11px] text-muted hover:text-error transition-colors"
                         >
                           删除
                         </button>
                       </div>
-                      <div className="text-xs text-ink/70 leading-relaxed">
-                        {comment.content}
-                      </div>
+                      <p className="text-xs text-ink-secondary leading-relaxed">{comment.content}</p>
                     </div>
                   </div>
                 ))}
@@ -399,126 +329,144 @@ export default function AdminIdeaEditorPage(props: {
 
         {/* Right: Controls */}
         <div className="space-y-4">
-          {/* Status + Version */}
-          <div className="bg-paper rounded-xl border border-border p-5 space-y-4">
+          {/* Status & Visibility */}
+          <div className="card p-5 space-y-4">
+            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider">状态管理</h3>
+
             <div>
-              <label className="block text-xs font-medium text-muted mb-1.5">
-                状态
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-cream border border-border text-sm text-ink focus:outline-none focus:border-gold/40 transition-all"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              <label className="block text-xs font-medium text-muted mb-1.5">状态</label>
+              <div className="relative">
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="input-base appearance-none pr-8"
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                  <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-muted mb-1.5">
-                版本号
-              </label>
+              <label className="block text-xs font-medium text-muted mb-1.5">版本号</label>
               <input
                 type="text"
                 value={version}
                 onChange={(e) => setVersion(e.target.value)}
                 placeholder="v1.0"
-                className="w-full px-3 py-2 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/40 focus:outline-none focus:border-gold/40 transition-all"
+                className="input-base"
               />
             </div>
 
             <div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={visible}
-                  onChange={(e) => setVisible(e.target.checked)}
-                  className="w-4 h-4 rounded border-border text-gold focus:ring-gold/20"
-                />
-                <span className="text-sm text-ink">对外可见</span>
+              <label className="flex items-center gap-2.5 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={visible}
+                    onChange={(e) => setVisible(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div className={`w-9 h-5 rounded-full transition-colors ${visible ? "bg-gold" : "bg-border"}`}>
+                    <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform mt-0.5 ${visible ? "translate-x-4.5 ml-0.5" : "translate-x-0.5"}`} />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-ink">对外可见</span>
+                  <p className="text-xs text-muted mt-0.5">
+                    {visible ? "用户可在前台看到" : "仅管理员可见"}
+                  </p>
+                </div>
               </label>
-              <p className="text-xs text-muted/60 mt-1 ml-6">
-                {visible
-                  ? "用户可以在前台看到这个想法"
-                  : "这个想法仅管理员可见"}
-              </p>
             </div>
           </div>
 
           {/* Actions */}
-          <div className="bg-paper rounded-xl border border-border p-5 space-y-3">
+          <div className="card p-5 space-y-3">
             <button
               onClick={handleSave}
               disabled={saving}
-              className="w-full inline-flex items-center justify-center gap-2 bg-gold hover:bg-gold-light disabled:opacity-50 text-white font-medium py-2.5 rounded-lg text-sm transition-all"
+              className="btn btn-primary w-full py-2.5 text-sm font-semibold"
             >
-              {saving ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
+              {saving ? <div className="spinner spinner-sm spinner-white" /> : (
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               )}
-              {saving ? "保存中..." : "保存"}
+              {saving ? "保存中..." : "保存更改"}
             </button>
 
             {saveMessage && (
-              <p
-                className={`text-xs text-center ${
-                  saveMessage === "已保存"
-                    ? "text-status-published"
-                    : "text-red-500"
-                }`}
-              >
-                {saveMessage}
-              </p>
+              <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
+                saveMessage.type === "success"
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : "bg-red-50 text-error border border-red-200"
+              }`}>
+                {saveMessage.type === "success" ? (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                {saveMessage.text}
+              </div>
             )}
+
+            <div className="divider" />
 
             <button
               onClick={handleDelete}
-              className="w-full inline-flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 text-red-600 font-medium py-2.5 rounded-lg text-sm transition-all border border-red-200"
+              className="btn btn-danger w-full py-2 text-sm"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
-              删除想法
+              删除需求
             </button>
           </div>
 
           {/* Meta Info */}
-          <div className="bg-paper rounded-xl border border-border p-5">
-            <h3 className="text-xs font-medium text-muted mb-3">信息</h3>
-            <dl className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <dt className="text-muted">来源</dt>
-                <dd className="text-ink font-medium">{idea.source}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted">审核状态</dt>
-                <dd className="text-ink font-medium">{idea.moderation_status}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted">更新时间</dt>
-                <dd className="text-ink font-medium">{formatDate(idea.updated_at)}</dd>
-              </div>
-              {idea.author_contact && (
-                <div className="flex justify-between">
-                  <dt className="text-muted">联系方式</dt>
-                  <dd className="text-ink font-medium">{idea.author_contact}</dd>
+          <div className="card p-5">
+            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3">详细信息</h3>
+            <dl className="space-y-2.5">
+              {[
+                { label: "来源", value: idea.source },
+                { label: "审核状态", value: idea.moderation_status },
+                { label: "更新时间", value: formatDate(idea.updated_at) },
+                ...(idea.author_contact ? [{ label: "联系方式", value: idea.author_contact }] : []),
+              ].map(({ label, value }) => (
+                <div key={label} className="flex justify-between items-start gap-2">
+                  <dt className="text-xs text-muted flex-shrink-0">{label}</dt>
+                  <dd className="text-xs font-medium text-ink text-right">{value}</dd>
                 </div>
-              )}
-              <div className="flex justify-between">
-                <dt className="text-muted">ID</dt>
-                <dd className="text-ink font-mono text-[10px] truncate max-w-[140px]">
-                  {idea.id}
-                </dd>
+              ))}
+              <div className="flex justify-between items-start gap-2 pt-1 border-t border-border">
+                <dt className="text-xs text-muted flex-shrink-0">ID</dt>
+                <dd className="text-[10px] font-mono text-muted truncate max-w-[140px]">{idea.id}</dd>
               </div>
             </dl>
           </div>
+
+          {/* Quick Link */}
+          <Link
+            href={`/ideas/${ideaId}`}
+            target="_blank"
+            className="btn btn-ghost w-full py-2 text-xs text-muted justify-center"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            在前台查看
+          </Link>
         </div>
       </div>
     </div>

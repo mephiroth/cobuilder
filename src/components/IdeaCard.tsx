@@ -1,7 +1,4 @@
-"use client";
-
-import React from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import StatusTag from "./StatusTag";
 
 interface IdeaCardProps {
@@ -10,27 +7,37 @@ interface IdeaCardProps {
   description: string;
   status: string;
   votes: number;
-  author_name: string;
-  comment_count: number;
-  created_at: string;
-  project_id: string;
+  authorName: string;
+  createdAt: string;
+  commentCount?: number;
+  animationDelay?: number;
 }
 
-function relativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string) {
+  const d = new Date(dateStr + "Z");
   const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHr = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHr / 24);
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHour = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
 
-  if (diffSec < 60) return "刚刚";
+  if (diffMin < 1) return "刚刚";
   if (diffMin < 60) return `${diffMin}分钟前`;
-  if (diffHr < 24) return `${diffHr}小时前`;
+  if (diffHour < 24) return `${diffHour}小时前`;
   if (diffDay < 30) return `${diffDay}天前`;
-  if (diffDay < 365) return `${Math.floor(diffDay / 30)}个月前`;
-  return `${Math.floor(diffDay / 365)}年前`;
+  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s/g, "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/^[-*+]\s/gm, "")
+    .replace(/^>\s/gm, "")
+    .trim();
 }
 
 export default function IdeaCard({
@@ -39,71 +46,72 @@ export default function IdeaCard({
   description,
   status,
   votes,
-  author_name,
-  comment_count,
-  created_at,
-  project_id,
+  authorName,
+  createdAt,
+  commentCount,
+  animationDelay = 0,
 }: IdeaCardProps) {
-  const router = useRouter();
+  const cleanDesc = stripMarkdown(description);
+  const truncated = cleanDesc.length > 110 ? cleanDesc.slice(0, 110) + "…" : cleanDesc;
 
   return (
-    <div
-      onClick={() => router.push(`/ideas/${id}`)}
-      className="flex items-start gap-4 bg-white rounded-xl shadow-sm border border-[#E8E4DE] p-4 cursor-pointer hover:shadow-md transition-shadow duration-200"
+    <Link
+      href={`/ideas/${id}`}
+      className="group card card-hover block p-5 animate-fade-in"
+      style={{ animationDelay: `${animationDelay}ms` }}
     >
-      {/* Vote section */}
-      <div className="flex flex-col items-center gap-1 min-w-[48px] pt-1">
-        <svg
-          className="w-5 h-5 text-[#8B6914]"
-          fill="currentColor"
-          viewBox="0 0 20 20"
-        >
-          <path
-            fillRule="evenodd"
-            d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z"
-            clipRule="evenodd"
-          />
-        </svg>
-        <span className="text-lg font-bold text-[#8B6914]">{votes}</span>
-      </div>
-
-      {/* Content section */}
-      <div className="flex-1 min-w-0">
-        <h3 className="font-serif text-lg font-bold text-[#2C2C2C] mb-1 truncate">
-          {title}
-        </h3>
-
-        <p className="text-sm text-gray-500 line-clamp-2 mb-2">
-          {description}
-        </p>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <StatusTag status={status} size="sm" />
-
-          <div className="flex items-center gap-3 ml-auto text-xs text-gray-400">
-            <span>{author_name}</span>
-            <span>·</span>
-            <span>{relativeTime(created_at)}</span>
-            <span>·</span>
-            <span className="flex items-center gap-1">
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
-              {comment_count}
+      <div className="flex gap-4">
+        {/* Vote Column */}
+        <div className="flex-shrink-0 flex flex-col items-center pt-0.5">
+          <div className="vote-btn group-hover:border-gold-border group-hover:bg-gold-subtle group-hover:text-gold">
+            <svg
+              className="w-3.5 h-3.5 text-muted group-hover:text-gold transition-colors"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+            </svg>
+            <span className="text-xs font-bold text-ink group-hover:text-gold transition-colors leading-none">
+              {votes}
             </span>
           </div>
         </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          {/* Title Row */}
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <h3 className="font-serif text-[15px] font-bold text-ink group-hover:text-gold transition-colors leading-snug line-clamp-2">
+              {title}
+            </h3>
+            <StatusTag status={status} size="sm" />
+          </div>
+
+          {/* Description */}
+          <p className="text-sm text-muted leading-relaxed line-clamp-2 mb-3">
+            {truncated}
+          </p>
+
+          {/* Meta */}
+          <div className="flex items-center gap-2 text-xs text-muted-light">
+            <span className="font-medium text-muted">{authorName}</span>
+            <span>·</span>
+            <span>{formatRelativeTime(createdAt)}</span>
+            {commentCount !== undefined && commentCount > 0 && (
+              <>
+                <span>·</span>
+                <span className="flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  {commentCount}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
+    </Link>
   );
 }

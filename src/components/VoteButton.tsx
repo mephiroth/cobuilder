@@ -1,101 +1,69 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-
-function getVotedIdeas(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem("voted_ideas");
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function setVotedIdeas(ideas: string[]) {
-  localStorage.setItem("voted_ideas", JSON.stringify(ideas));
-}
-
-function getVoterId(): string {
-  if (typeof window === "undefined") return "";
-  let id = localStorage.getItem("voter_id");
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem("voter_id", id);
-  }
-  return id;
-}
-
 interface VoteButtonProps {
-  ideaId: string;
-  initialCount: number;
+  votes: number;
+  hasVoted: boolean;
+  loading: boolean;
+  onVote: () => void;
+  size?: "sm" | "lg";
 }
 
-export default function VoteButton({ ideaId, initialCount }: VoteButtonProps) {
-  const [count, setCount] = useState(initialCount);
-  const [hasVoted, setHasVoted] = useState(false);
-  const [animating, setAnimating] = useState(false);
-
-  useEffect(() => {
-    setHasVoted(getVotedIdeas().includes(ideaId));
-  }, [ideaId]);
-
-  const handleVote = useCallback(async () => {
-    if (hasVoted) return;
-
-    const voterId = getVoterId();
-    if (!voterId) return;
-
-    try {
-      const res = await fetch(`/api/ideas/${ideaId}/vote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ voter_id: voterId }),
-      });
-
-      if (res.ok) {
-        setAnimating(true);
-        setCount((prev) => prev + 1);
-        setHasVoted(true);
-        setVotedIdeas([...getVotedIdeas(), ideaId]);
-
-        setTimeout(() => setAnimating(false), 300);
-      }
-    } catch (err) {
-      console.error("Vote failed:", err);
-    }
-  }, [hasVoted, ideaId]);
+export default function VoteButton({
+  votes,
+  hasVoted,
+  loading,
+  onVote,
+  size = "sm",
+}: VoteButtonProps) {
+  if (size === "lg") {
+    return (
+      <button
+        onClick={onVote}
+        disabled={loading || hasVoted}
+        className={`inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-medium text-sm transition-all border ${
+          hasVoted
+            ? "bg-gold-subtle text-gold border-gold-border cursor-default"
+            : "bg-surface hover:bg-gold-subtle text-ink hover:text-gold border-border hover:border-gold-border active:scale-[0.97]"
+        } disabled:opacity-60`}
+      >
+        {loading ? (
+          <div className="spinner spinner-sm" />
+        ) : (
+          <svg
+            className={`w-4 h-4 transition-colors ${hasVoted ? "text-gold" : "text-muted"}`}
+            fill={hasVoted ? "currentColor" : "none"}
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+          </svg>
+        )}
+        <span>{hasVoted ? "已投票" : "投票支持"}</span>
+        <span className="font-bold text-base">{votes}</span>
+      </button>
+    );
+  }
 
   return (
     <button
-      onClick={handleVote}
-      disabled={hasVoted}
-      className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 ${
-        hasVoted
-          ? "bg-[#8B6914]/10 text-[#8B6914] cursor-not-allowed"
-          : "bg-white border border-[#E8E4DE] text-[#8B6914] hover:border-[#8B6914] hover:bg-[#8B6914]/5 cursor-pointer"
-      }`}
+      onClick={onVote}
+      disabled={loading || hasVoted}
+      className={`vote-btn ${hasVoted ? "voted" : ""} disabled:opacity-60`}
+      title={hasVoted ? "已投票" : "投票支持"}
     >
-      <svg
-        className={`w-5 h-5 transition-transform duration-300 ${
-          animating ? "scale-125" : "scale-100"
-        }`}
-        fill="currentColor"
-        viewBox="0 0 20 20"
-      >
-        <path
-          fillRule="evenodd"
-          d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z"
-          clipRule="evenodd"
-        />
-      </svg>
-      <span
-        className={`text-sm font-bold transition-transform duration-300 ${
-          animating ? "scale-110" : "scale-100"
-        }`}
-      >
-        {count}
-      </span>
+      {loading ? (
+        <div className="spinner spinner-sm" />
+      ) : (
+        <svg
+          className="w-3.5 h-3.5"
+          fill={hasVoted ? "currentColor" : "none"}
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+        </svg>
+      )}
+      <span className="text-xs font-bold leading-none">{votes}</span>
     </button>
   );
 }

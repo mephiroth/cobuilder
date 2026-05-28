@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { verifyAdmin, adminResponse } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   if (!verifyAdmin(request)) {
     return adminResponse('Unauthorized');
   }

@@ -22,8 +22,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  // Form state
   const [name, setName] = useState("");
   const [codebaseDir, setCodebaseDir] = useState("");
   const [description, setDescription] = useState("");
@@ -32,9 +32,7 @@ export default function SettingsPage() {
     const fetchProject = async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/projects", {
-          headers: getAuthHeaders(),
-        });
+        const res = await fetch("/api/projects", { headers: getAuthHeaders() });
         if (res.ok) {
           const projects: Project[] = await res.json();
           if (projects.length > 0) {
@@ -64,10 +62,7 @@ export default function SettingsPage() {
     try {
       const res = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
-        headers: {
-          ...getAuthHeaders(),
-          "Content-Type": "application/json",
-        },
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
           codebase_dir: codebaseDir.trim(),
@@ -91,117 +86,143 @@ export default function SettingsPage() {
     }
   };
 
-  const isDirty =
-    project &&
-    (name !== project.name ||
-      codebaseDir !== project.codebase_dir ||
-      description !== (project.description || ""));
+  const handleCopy = async () => {
+    if (!project) return;
+    await navigator.clipboard.writeText(project.id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const isDirty = project && (
+    name !== project.name ||
+    codebaseDir !== project.codebase_dir ||
+    description !== (project.description || "")
+  );
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+      <div className="max-w-2xl space-y-4 animate-fade-in">
+        <div className="skeleton h-7 w-40 rounded-lg" />
+        <div className="card overflow-hidden">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="px-6 py-5 border-b border-border last:border-0">
+              <div className="skeleton h-4 w-24 rounded mb-3" />
+              <div className="skeleton h-10 rounded-lg" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   if (!project) {
     return (
-      <div className="text-center py-20 text-muted">
-        <p>未找到项目数据</p>
+      <div className="empty-state">
+        <p className="text-base font-medium text-ink mb-1">未找到项目数据</p>
+        <p className="text-sm text-muted">请检查数据库配置</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-2xl space-y-6 animate-fade-in">
+      {/* Page Header */}
       <div>
-        <h2 className="font-serif text-lg font-bold text-ink">项目设置</h2>
-        <p className="text-sm text-muted mt-1">管理当前项目的基本信息</p>
+        <h2 className="font-serif text-xl font-bold text-ink">项目设置</h2>
+        <p className="text-sm text-muted mt-1">管理当前项目的基本信息和 AI 配置</p>
       </div>
 
-      <form onSubmit={handleSave} className="bg-paper rounded-xl border border-border divide-y divide-border">
+      <form onSubmit={handleSave} className="card overflow-hidden divide-y divide-border">
         {/* Project Name */}
-        <div className="px-6 py-5 space-y-1.5">
-          <label className="block text-sm font-medium text-ink">
-            项目名称
-          </label>
+        <div className="px-6 py-5">
+          <label className="block text-sm font-semibold text-ink mb-1">项目名称</label>
+          <p className="text-xs text-muted mb-3">显示在前台页面和管理后台的项目标识</p>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="项目名称"
             required
-            className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
+            className="input-base"
           />
         </div>
 
         {/* Description */}
-        <div className="px-6 py-5 space-y-1.5">
-          <label className="block text-sm font-medium text-ink">
-            项目描述
-          </label>
+        <div className="px-6 py-5">
+          <label className="block text-sm font-semibold text-ink mb-1">项目描述</label>
+          <p className="text-xs text-muted mb-3">简短描述项目用途，帮助用户了解该提交什么需求</p>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="简短描述这个项目的用途..."
             rows={3}
-            className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all resize-none"
+            className="input-base resize-none"
           />
         </div>
 
         {/* Codebase Dir */}
-        <div className="px-6 py-5 space-y-1.5">
-          <label className="block text-sm font-medium text-ink">
-            代码库路径
-          </label>
-          <p className="text-xs text-muted">AI Agent 分析需求时使用的本地代码目录</p>
+        <div className="px-6 py-5">
+          <label className="block text-sm font-semibold text-ink mb-1">代码库路径</label>
+          <p className="text-xs text-muted mb-3">AI Agent 分析需求时读取的本地代码目录，用于生成更准确的需求文档</p>
           <input
             type="text"
             value={codebaseDir}
             onChange={(e) => setCodebaseDir(e.target.value)}
             placeholder="/path/to/your/project"
-            className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink font-mono placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
+            className="input-base font-mono"
           />
         </div>
 
-        {/* Project ID (read-only) */}
-        <div className="px-6 py-5 space-y-1.5">
-          <label className="block text-sm font-medium text-ink">
-            项目 ID
-          </label>
-          <p className="text-xs text-muted">提交想法时需要传入此 ID</p>
+        {/* Project ID */}
+        <div className="px-6 py-5">
+          <label className="block text-sm font-semibold text-ink mb-1">项目 ID</label>
+          <p className="text-xs text-muted mb-3">通过 API 提交需求时需要传入此 ID</p>
           <div className="flex items-center gap-2">
             <input
               type="text"
               value={project.id}
               readOnly
-              className="flex-1 px-4 py-2.5 rounded-lg bg-cream/50 border border-border text-sm text-muted font-mono cursor-default select-all"
+              className="input-base font-mono text-muted cursor-default select-all flex-1"
             />
             <button
               type="button"
-              onClick={() => navigator.clipboard.writeText(project.id)}
-              className="px-3 py-2.5 rounded-lg border border-border text-xs text-muted hover:text-ink hover:bg-cream transition-all"
+              onClick={handleCopy}
+              className={`btn text-xs px-3 py-2.5 flex-shrink-0 transition-all ${
+                copied
+                  ? "btn-secondary text-green-600 border-green-200"
+                  : "btn-secondary"
+              }`}
             >
-              复制
+              {copied ? (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  已复制
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  复制
+                </>
+              )}
             </button>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 flex items-center justify-between gap-4">
-          <div className="text-xs text-muted">
-            创建于{" "}
-            {new Date(project.created_at + "Z").toLocaleDateString("zh-CN", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
-          </div>
+        <div className="px-6 py-4 bg-surface flex items-center justify-between gap-4">
+          <p className="text-xs text-muted">
+            创建于 {new Date(project.created_at + "Z").toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" })}
+          </p>
           <div className="flex items-center gap-3">
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && (
+              <p className="text-sm text-error">{error}</p>
+            )}
             {saved && (
-              <span className="text-sm text-green-600 flex items-center gap-1">
+              <span className="flex items-center gap-1.5 text-sm text-green-600">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
@@ -211,16 +232,30 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={!isDirty || saving || !name.trim()}
-              className="inline-flex items-center gap-1.5 bg-gold hover:bg-gold-light disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+              className="btn btn-primary text-sm px-5 py-2"
             >
-              {saving ? (
-                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : null}
+              {saving ? <div className="spinner spinner-sm spinner-white" /> : null}
               保存更改
             </button>
           </div>
         </div>
       </form>
+
+      {/* API Usage Card */}
+      <div className="card p-5">
+        <h3 className="text-sm font-semibold text-ink mb-3">API 使用示例</h3>
+        <p className="text-xs text-muted mb-3">通过 API 提交需求：</p>
+        <pre className="bg-ink text-green-400 text-xs p-4 rounded-xl overflow-x-auto font-mono leading-relaxed">
+{`curl -X POST /api/ideas/create \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "project_id": "${project.id}",
+    "title": "需求标题",
+    "description": "详细描述",
+    "author_name": "提交人"
+  }'`}
+        </pre>
+      </div>
     </div>
   );
 }

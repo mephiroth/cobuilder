@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
+import MarkdownRenderer from "./MarkdownRenderer";
 
 interface Comment {
   id: string;
+  idea_id: string;
   author_name: string;
   content: string;
   is_admin: number;
@@ -12,45 +14,38 @@ interface Comment {
 
 interface CommentSectionProps {
   ideaId: string;
-  comments: Comment[];
-  isAdmin?: boolean;
+  initialComments: Comment[];
 }
 
-function relativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string) {
+  const d = new Date(dateStr + "Z");
   const now = new Date();
-  const date = new Date(dateStr);
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHr = Math.floor(diffMin / 60);
-  const diffDay = Math.floor(diffHr / 24);
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHour = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
 
-  if (diffSec < 60) return "刚刚";
+  if (diffMin < 1) return "刚刚";
   if (diffMin < 60) return `${diffMin}分钟前`;
-  if (diffHr < 24) return `${diffHr}小时前`;
+  if (diffHour < 24) return `${diffHour}小时前`;
   if (diffDay < 30) return `${diffDay}天前`;
-  return `${Math.floor(diffDay / 30)}个月前`;
+  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
 }
 
 function getInitial(name: string): string {
-  return name ? name.charAt(0).toUpperCase() : "?";
+  return name.charAt(0).toUpperCase();
 }
 
-export default function CommentSection({
-  ideaId,
-  comments: initialComments,
-  isAdmin = false,
-}: CommentSectionProps) {
+export default function CommentSection({ ideaId, initialComments }: CommentSectionProps) {
   const [comments, setComments] = useState<Comment[]>(initialComments);
-  const [name, setName] = useState("");
-  const [content, setContent] = useState("");
+  const [commentName, setCommentName] = useState("");
+  const [commentContent, setCommentContent] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!name.trim() || !content.trim()) return;
+    if (!commentContent.trim() || submitting) return;
 
     setSubmitting(true);
     setError(null);
@@ -60,118 +55,117 @@ export default function CommentSection({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          author_name: name.trim(),
-          content: content.trim(),
-          is_admin: isAdmin,
+          author_name: commentName.trim() || "匿名",
+          content: commentContent.trim(),
         }),
       });
 
-      if (!res.ok) {
-        throw new Error("提交失败，请重试");
-      }
+      if (!res.ok) throw new Error("提交评论失败");
 
-      const newComment: Comment = {
-        id: crypto.randomUUID(),
-        author_name: name.trim(),
-        content: content.trim(),
-        is_admin: isAdmin,
-        created_at: new Date().toISOString(),
-      };
-
+      const newComment = await res.json();
       setComments((prev) => [...prev, newComment]);
-      setContent("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "提交失败");
+      setCommentContent("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "提交评论失败");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      {/* Comments list */}
-      {comments.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">
-          暂无评论，快来发表第一条吧
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {comments.map((comment) => (
-            <div key={comment.id} className="flex gap-3">
+    <section className="card p-6 sm:p-8">
+      {/* Header */}
+      <div className="section-header">
+        <div className="section-header-accent" />
+        <h2 className="font-serif text-lg font-bold text-ink">
+          讨论
+          {comments.length > 0 && (
+            <span className="ml-2 text-sm font-normal text-muted">({comments.length})</span>
+          )}
+        </h2>
+      </div>
+
+      {/* Comment List */}
+      {comments.length > 0 ? (
+        <div className="space-y-5 mb-8">
+          {comments.map((comment, idx) => (
+            <div
+              key={comment.id}
+              className="flex gap-3 animate-fade-in"
+              style={{ animationDelay: `${idx * 30}ms` }}
+            >
               {/* Avatar */}
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
-                  comment.is_admin ? "bg-[#8B6914]" : "bg-gray-300"
+                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+                  comment.is_admin
+                    ? "bg-gold-subtle text-gold border border-gold-border"
+                    : "bg-surface-hover text-muted border border-border"
                 }`}
               >
-                {getInitial(comment.author_name)}
+                {comment.is_admin ? "管" : getInitial(comment.author_name)}
               </div>
 
               {/* Content */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-medium text-[#2C2C2C]">
-                    {comment.author_name}
-                  </span>
-                  {comment.is_admin && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-[#8B6914]/10 text-[#8B6914]">
-                      管理员
-                    </span>
-                  )}
-                  <span className="text-xs text-gray-400">
-                    {relativeTime(comment.created_at)}
-                  </span>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-sm font-semibold text-ink">{comment.author_name}</span>
+                  {comment.is_admin ? (
+                    <span className="badge badge-clarified text-[10px] px-1.5 py-0.5">管理员</span>
+                  ) : null}
+                  <span className="text-xs text-muted-light">{formatRelativeTime(comment.created_at)}</span>
                 </div>
-                <p className="text-sm text-[#2C2C2C] whitespace-pre-wrap break-words">
-                  {comment.content}
-                </p>
+                <div className="text-sm text-ink-secondary leading-relaxed">
+                  <MarkdownRenderer content={comment.content} />
+                </div>
               </div>
             </div>
           ))}
         </div>
+      ) : (
+        <p className="text-sm text-muted-light mb-8 py-4 text-center">
+          暂无讨论，来发表第一条评论吧
+        </p>
       )}
 
-      {/* Divider */}
-      <hr className="border-[#E8E4DE]" />
-
-      {/* Comment form */}
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
+      {/* Comment Form */}
+      <form onSubmit={handleSubmit} className="border-t border-border pt-6">
+        <h3 className="text-sm font-semibold text-ink mb-4">发表评论</h3>
+        <div className="space-y-3">
           <input
             type="text"
-            placeholder="你的名字"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-[#E8E4DE] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#8B6914]/30 focus:border-[#8B6914] transition-colors bg-white"
-            required
+            value={commentName}
+            onChange={(e) => setCommentName(e.target.value)}
+            placeholder="昵称（可选，默认匿名）"
+            className="input-base"
           />
-        </div>
-
-        <div>
           <textarea
-            placeholder="发表你的评论..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={3}
-            className="w-full px-3 py-2 text-sm border border-[#E8E4DE] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#8B6914]/30 focus:border-[#8B6914] transition-colors bg-white"
-            required
+            value={commentContent}
+            onChange={(e) => setCommentContent(e.target.value)}
+            placeholder="说点什么..."
+            rows={4}
+            className="input-base resize-none"
           />
-        </div>
-
-        {error && (
-          <p className="text-xs text-red-500">{error}</p>
-        )}
-
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={submitting || !name.trim() || !content.trim()}
-            className="px-4 py-2 text-sm font-medium text-white bg-[#8B6914] rounded-lg hover:bg-[#6B5010] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {submitting ? "提交中..." : "发表评论"}
-          </button>
+          {error && (
+            <p className="text-sm text-error">{error}</p>
+          )}
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={!commentContent.trim() || submitting}
+              className="btn btn-primary text-sm px-5 py-2"
+            >
+              {submitting ? (
+                <>
+                  <div className="spinner spinner-sm spinner-white" />
+                  提交中...
+                </>
+              ) : (
+                "发表评论"
+              )}
+            </button>
+          </div>
         </div>
       </form>
-    </div>
+    </section>
   );
 }

@@ -21,6 +21,7 @@ export default function SubmitPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [activeTab, setActiveTab] = useState<"write" | "preview">("write");
 
   useEffect(() => {
     async function loadProjects() {
@@ -29,9 +30,7 @@ export default function SubmitPage() {
         if (!res.ok) throw new Error("加载项目失败");
         const data = await res.json();
         setProjects(data);
-        if (data.length === 1) {
-          setSelectedProject(data[0].id);
-        }
+        if (data.length === 1) setSelectedProject(data[0].id);
       } catch {
         setError("加载项目列表失败");
       } finally {
@@ -43,8 +42,7 @@ export default function SubmitPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProject || !title.trim() || !description.trim() || submitting)
-      return;
+    if (!selectedProject || !title.trim() || !description.trim() || submitting) return;
 
     setSubmitting(true);
     setError(null);
@@ -76,164 +74,210 @@ export default function SubmitPage() {
     }
   };
 
-  const charCount = description.length;
+  const isValid = selectedProject && title.trim() && description.trim();
 
   return (
     <div className="min-h-screen bg-cream">
       {/* Navbar */}
       <nav className="navbar-glass fixed top-0 left-0 right-0 z-50">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="font-serif text-lg font-bold text-gold hover:text-gold-light transition-colors">
-            CoBuilder
-          </Link>
-          <Link
-            href="/"
-            className="text-sm text-muted hover:text-ink transition-colors flex items-center gap-1"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            返回
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              返回
+            </Link>
+            <span className="text-border">|</span>
+            <Link href="/" className="font-serif text-base font-bold text-gold hover:text-gold-light transition-colors">
+              CoBuilder
+            </Link>
+          </div>
+          <span className="text-sm text-muted">提交需求</span>
         </div>
       </nav>
 
-      <main className="pt-24 max-w-2xl mx-auto px-4 sm:px-6 pb-20">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="font-serif text-3xl font-bold text-ink mb-2">许一个愿望</h1>
+      <main className="pt-20 max-w-2xl mx-auto px-4 sm:px-6 pb-20">
+        {/* Page Header */}
+        <div className="py-8">
+          <h1 className="font-serif text-3xl font-bold text-ink mb-2">提交需求</h1>
           <p className="text-muted text-sm">
-            把你的想法写下来，让它有机会变成现实
+            描述你的想法，AI 会自动分析并生成结构化需求文档
           </p>
         </div>
 
-        {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          className="bg-paper rounded-xl border border-border p-6 sm:p-8 animate-fade-in"
-        >
-          <div className="space-y-5">
-            {/* Project Selector */}
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">
-                项目 <span className="text-status-pending">*</span>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Project Selector */}
+          {(projects.length > 1 || loadingProjects) && (
+            <div className="card p-5">
+              <label className="block text-sm font-semibold text-ink mb-3">
+                所属项目
+                <span className="text-error ml-1">*</span>
               </label>
               {loadingProjects ? (
-                <div className="h-10 rounded-lg bg-cream border border-border animate-pulse-soft" />
+                <div className="skeleton h-10 rounded-lg" />
               ) : (
-                <select
-                  value={selectedProject}
-                  onChange={(e) => setSelectedProject(e.target.value)}
-                  required
-                  className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all appearance-none"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239CA3AF' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-                    backgroundPosition: "right 0.75rem center",
-                    backgroundRepeat: "no-repeat",
-                    backgroundSize: "1.25em 1.25em",
-                  }}
-                >
-                  <option value="">请选择项目...</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    value={selectedProject}
+                    onChange={(e) => setSelectedProject(e.target.value)}
+                    required
+                    className="input-base appearance-none pr-10"
+                  >
+                    <option value="">请选择项目...</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}{p.description ? ` — ${p.description}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                    <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
               )}
             </div>
+          )}
 
-            {/* Title */}
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">
-                标题 <span className="text-status-pending">*</span>
+          {/* Title */}
+          <div className="card p-5">
+            <label className="block text-sm font-semibold text-ink mb-3">
+              需求标题
+              <span className="text-error ml-1">*</span>
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="用一句话描述你的需求..."
+              required
+              maxLength={100}
+              className="input-base"
+            />
+            <div className="flex justify-end mt-1.5">
+              <span className="text-xs text-muted-light">{title.length}/100</span>
+            </div>
+          </div>
+
+          {/* Description */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm font-semibold text-ink">
+                详细描述
+                <span className="text-error ml-1">*</span>
               </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="用一句话描述你的想法..."
-                required
-                maxLength={100}
-                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
-              />
-              <p className="mt-1 text-xs text-muted/60 text-right">
-                {title.length}/100
-              </p>
+              <div className="flex items-center gap-1 bg-surface-hover rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("write")}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                    activeTab === "write"
+                      ? "bg-paper text-ink shadow-xs"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  编写
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("preview")}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                    activeTab === "preview"
+                      ? "bg-paper text-ink shadow-xs"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  预览
+                </button>
+              </div>
             </div>
 
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">
-                详细描述 <span className="text-status-pending">*</span>
-              </label>
+            {activeTab === "write" ? (
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="详细描述你的想法、需求或问题...&#10;&#10;支持 Markdown 格式：&#10;- **加粗** &#10;- *斜体*&#10;- `代码`&#10;- 列表"
+                placeholder={`详细描述你的需求、背景和预期效果...\n\n支持 Markdown 格式：\n- **加粗文字**\n- *斜体文字*\n- \`代码片段\`\n- ## 标题`}
                 required
-                rows={8}
-                className="w-full px-4 py-3 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all resize-none font-mono leading-relaxed"
+                rows={10}
+                className="input-base font-mono leading-relaxed resize-none"
               />
-              <p className="mt-1 text-xs text-muted/60 text-right">
-                {charCount} 字 · 支持 Markdown
-              </p>
-            </div>
+            ) : (
+              <div className="min-h-[200px] p-4 rounded-lg bg-surface border border-border">
+                {description ? (
+                  <div className="prose max-w-none text-sm">
+                    {/* Simple preview - just show the text */}
+                    <pre className="whitespace-pre-wrap font-sans text-sm text-ink leading-relaxed">{description}</pre>
+                  </div>
+                ) : (
+                  <p className="text-muted-light text-sm italic">暂无内容</p>
+                )}
+              </div>
+            )}
 
-            {/* Nickname */}
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">
-                昵称 <span className="text-xs text-muted/60 font-normal">（可选）</span>
-              </label>
-              <input
-                type="text"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                placeholder="留空则显示为匿名"
-                maxLength={30}
-                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
-              />
+            <div className="flex items-center justify-between mt-1.5">
+              <span className="text-xs text-muted-light">支持 Markdown 格式</span>
+              <span className="text-xs text-muted-light">{description.length} 字</span>
             </div>
+          </div>
 
-            {/* Contact */}
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">
-                联系方式 <span className="text-xs text-muted/60 font-normal">（可选，方便沟通细节）</span>
-              </label>
-              <input
-                type="text"
-                value={contact}
-                onChange={(e) => setContact(e.target.value)}
-                placeholder="邮箱、微信等"
-                maxLength={100}
-                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
-              />
+          {/* Author Info */}
+          <div className="card p-5">
+            <h3 className="text-sm font-semibold text-ink mb-4">提交人信息（可选）</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">昵称</label>
+                <input
+                  type="text"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  placeholder="留空则显示为匿名"
+                  maxLength={30}
+                  className="input-base"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">联系方式</label>
+                <input
+                  type="text"
+                  value={contact}
+                  onChange={(e) => setContact(e.target.value)}
+                  placeholder="邮箱、微信等"
+                  maxLength={100}
+                  className="input-base"
+                />
+              </div>
             </div>
+            <p className="text-xs text-muted-light mt-2">联系方式仅管理员可见，用于需求沟通</p>
           </div>
 
           {/* Error */}
           {error && (
-            <div className="mt-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
-              {error}
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-200">
+              <svg className="w-4 h-4 text-error flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm text-error">{error}</p>
             </div>
           )}
 
           {/* Submit */}
-          <div className="mt-8 flex items-center justify-between">
-            <Link
-              href="/"
-              className="text-sm text-muted hover:text-ink transition-colors"
-            >
+          <div className="flex items-center justify-between pt-2">
+            <Link href="/" className="btn btn-ghost text-sm px-4 py-2.5 text-muted">
               取消
             </Link>
             <button
               type="submit"
-              disabled={!selectedProject || !title.trim() || !description.trim() || submitting}
-              className="inline-flex items-center gap-2 bg-gold hover:bg-gold-light disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium px-8 py-2.5 rounded-lg text-sm transition-all active:scale-[0.97]"
+              disabled={!isValid || submitting}
+              className="btn btn-primary text-sm px-8 py-2.5 font-semibold"
             >
               {submitting ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="spinner spinner-sm spinner-white" />
                   提交中...
                 </>
               ) : (
@@ -241,7 +285,7 @@ export default function SubmitPage() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
-                  需求管理
+                  提交需求
                 </>
               )}
             </button>

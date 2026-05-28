@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import StatusTag from "@/components/StatusTag";
 
 interface Idea {
   id: string;
@@ -16,6 +17,12 @@ interface Idea {
   visible: number;
 }
 
+interface Project {
+  id: string;
+  name: string;
+  description?: string;
+}
+
 interface Stats {
   total: number;
   pending_count: number;
@@ -27,22 +34,22 @@ interface Stats {
 }
 
 const STATUS_OPTIONS = [
-  { value: "pending", label: "待澄清", color: "text-status-pending" },
-  { value: "clarified", label: "已澄清", color: "text-status-clarified" },
-  { value: "in_progress", label: "进行中", color: "text-status-in_progress" },
-  { value: "published", label: "已实现", color: "text-status-published" },
-  { value: "deferred", label: "已搁置", color: "text-status-deferred" },
-  { value: "closed", label: "已关闭", color: "text-status-closed" },
+  { value: "pending", label: "待澄清" },
+  { value: "clarified", label: "已澄清" },
+  { value: "in_progress", label: "进行中" },
+  { value: "published", label: "已实现" },
+  { value: "deferred", label: "已搁置" },
+  { value: "closed", label: "已关闭" },
 ];
 
-const STAT_CARDS: { key: string; label: string; field: keyof Stats; color: string }[] = [
-  { key: "total", label: "全部", field: "total", color: "text-ink" },
-  { key: "pending", label: "待澄清", field: "pending_count", color: "text-status-pending" },
-  { key: "clarified", label: "已澄清", field: "clarified_count", color: "text-status-clarified" },
-  { key: "in_progress", label: "进行中", field: "in_progress_count", color: "text-status-in_progress" },
-  { key: "published", label: "已实现", field: "published_count", color: "text-status-published" },
-  { key: "deferred", label: "已搁置", field: "deferred_count", color: "text-status-deferred" },
-  { key: "closed", label: "已关闭", field: "closed_count", color: "text-status-closed" },
+const STAT_CARDS = [
+  { key: "all", label: "全部", field: "total" as keyof Stats, color: "text-ink" },
+  { key: "pending", label: "待澄清", field: "pending_count" as keyof Stats, color: "text-amber-600" },
+  { key: "clarified", label: "已澄清", field: "clarified_count" as keyof Stats, color: "text-blue-600" },
+  { key: "in_progress", label: "进行中", field: "in_progress_count" as keyof Stats, color: "text-amber-600" },
+  { key: "published", label: "已实现", field: "published_count" as keyof Stats, color: "text-green-600" },
+  { key: "deferred", label: "已搁置", field: "deferred_count" as keyof Stats, color: "text-gray-500" },
+  { key: "closed", label: "已关闭", field: "closed_count" as keyof Stats, color: "text-gray-500" },
 ];
 
 function getAuthHeaders(): Record<string, string> {
@@ -53,12 +60,7 @@ function getAuthHeaders(): Record<string, string> {
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + "Z");
-  return d.toLocaleDateString("zh-CN", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function AdminDashboardPage() {
@@ -71,11 +73,13 @@ export default function AdminDashboardPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [batchClarifying, setBatchClarifying] = useState(false);
 
-  // New idea modal state
+  // New idea modal
   const [showNewModal, setShowNewModal] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newAuthor, setNewAuthor] = useState("");
+  const [newProjectId, setNewProjectId] = useState("");
+  const [projects, setProjects] = useState<Project[]>([]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -83,146 +87,95 @@ export default function AdminDashboardPage() {
     setLoading(true);
     try {
       const headers = getAuthHeaders();
-      const [statsRes, ideasRes] = await Promise.all([
+      const [statsRes, ideasRes, projectsRes] = await Promise.all([
         fetch("/api/admin/stats", { headers }),
-        fetch(
-          `/api/admin/ideas${filterStatus !== "all" ? `?status=${filterStatus}` : ""}`,
-          { headers }
-        ),
+        fetch(`/api/admin/ideas${filterStatus !== "all" ? `?status=${filterStatus}` : ""}`, { headers }),
+        fetch("/api/projects", { headers }),
       ]);
 
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setStats(statsData);
+      if (statsRes.ok) setStats(await statsRes.json());
+      if (ideasRes.ok) setIdeas(await ideasRes.json());
+      if (projectsRes.ok) {
+        const projectsData: Project[] = await projectsRes.json();
+        setProjects(projectsData);
+        if (projectsData.length > 0) setNewProjectId((prev) => prev || projectsData[0].id);
       }
-
-      if (ideasRes.ok) {
-        const ideasData = await ideasRes.json();
-        setIdeas(ideasData);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
   }, [filterStatus]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleStatusChange = async (ideaId: string, newStatus: string) => {
     try {
-      const headers = {
-        ...getAuthHeaders(),
-        "Content-Type": "application/json",
-      };
       const res = await fetch(`/api/admin/ideas/${ideaId}`, {
         method: "PATCH",
-        headers,
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-
-      if (res.ok) {
-        setIdeas((prev) =>
-          prev.map((i) => (i.id === ideaId ? { ...i, status: newStatus } : i))
-        );
-      }
-    } catch {
-      // ignore
-    }
+      if (res.ok) setIdeas((prev) => prev.map((i) => i.id === ideaId ? { ...i, status: newStatus } : i));
+    } catch { /* ignore */ }
   };
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === ideas.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(ideas.map((i) => i.id)));
-    }
+    setSelectedIds(selectedIds.size === ideas.length ? new Set() : new Set(ideas.map((i) => i.id)));
   };
 
   const handleBatchClarify = async () => {
     if (selectedIds.size === 0 || batchClarifying) return;
     setBatchClarifying(true);
-
     try {
-      const headers = {
-        ...getAuthHeaders(),
-        "Content-Type": "application/json",
-      };
-      const ids = Array.from(selectedIds);
-
+      const headers = { ...getAuthHeaders(), "Content-Type": "application/json" };
       await Promise.all(
-        ids.map((id) =>
-          fetch(`/api/admin/ideas/${id}/clarify`, {
-            method: "POST",
-            headers,
-          })
+        Array.from(selectedIds).map((id) =>
+          fetch(`/api/admin/ideas/${id}/clarify`, { method: "POST", headers })
         )
       );
-
       setSelectedIds(new Set());
       fetchData();
-    } catch {
-      // ignore
-    } finally {
-      setBatchClarifying(false);
-    }
+    } catch { /* ignore */ }
+    finally { setBatchClarifying(false); }
   };
 
   const sortedIdeas = [...ideas].sort((a, b) => {
-    if (sortBy === "votes") {
-      return sortDir === "desc" ? b.votes - a.votes : a.votes - b.votes;
-    }
+    if (sortBy === "votes") return sortDir === "desc" ? b.votes - a.votes : a.votes - b.votes;
     return sortDir === "desc"
       ? new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       : new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
   });
 
   const toggleSort = (field: "votes" | "date") => {
-    if (sortBy === field) {
-      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
-    } else {
-      setSortBy(field);
-      setSortDir("desc");
-    }
+    if (sortBy === field) setSortDir((d) => d === "desc" ? "asc" : "desc");
+    else { setSortBy(field); setSortDir("desc"); }
   };
 
   const handleCreateIdea = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim() || !newDescription.trim() || creating) return;
+    if (!newTitle.trim() || !newDescription.trim() || !newProjectId || creating) return;
     setCreating(true);
     setCreateError(null);
-
     try {
-      const headers = {
-        ...getAuthHeaders(),
-        "Content-Type": "application/json",
-      };
       const res = await fetch("/api/admin/ideas", {
         method: "POST",
-        headers,
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           title: newTitle.trim(),
           description: newDescription.trim(),
           author_name: newAuthor.trim() || "管理员",
+          project_id: newProjectId,
         }),
       });
-
       if (res.ok) {
         setShowNewModal(false);
-        setNewTitle("");
-        setNewDescription("");
-        setNewAuthor("");
+        setNewTitle(""); setNewDescription(""); setNewAuthor("");
         fetchData();
       } else {
         const data = await res.json();
@@ -237,141 +190,140 @@ export default function AdminDashboardPage() {
 
   return (
     <>
-    <div className="space-y-6 animate-fade-in">
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
-          {STAT_CARDS.map((card) => (
+      <div className="space-y-6 animate-fade-in">
+        {/* Stats */}
+        {stats && (
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+            {STAT_CARDS.map((card) => (
+              <button
+                key={card.key}
+                onClick={() => setFilterStatus(card.key === "total" ? "all" : card.key)}
+                className={`stat-card ${
+                  (card.key === "total" && filterStatus === "all") || card.key === filterStatus
+                    ? "active"
+                    : ""
+                }`}
+              >
+                <div className={`text-2xl font-bold font-serif ${card.color}`}>
+                  {stats[card.field]}
+                </div>
+                <div className="text-xs text-muted mt-1">{card.label}</div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleBatchClarify}
+                disabled={batchClarifying}
+                className="btn btn-primary text-sm px-3 py-1.5"
+              >
+                {batchClarifying ? (
+                  <div className="spinner spinner-sm spinner-white" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                )}
+                AI 澄清 ({selectedIds.size})
+              </button>
+            )}
             <button
-              key={card.key}
-              onClick={() =>
-                setFilterStatus(card.key === "total" ? "all" : card.key)
-              }
-              className={`bg-paper rounded-xl border p-4 text-center transition-all hover:shadow-sm ${
-                (card.key === "total" && filterStatus === "all") ||
-                card.key === filterStatus
-                  ? "border-gold/40 shadow-sm"
-                  : "border-border"
+              onClick={() => { setShowNewModal(true); setCreateError(null); }}
+              className="btn btn-secondary text-sm px-3 py-1.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              新建需求
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted mr-1">排序</span>
+            <button
+              onClick={() => toggleSort("date")}
+              className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${
+                sortBy === "date" ? "bg-gold-subtle text-gold" : "text-muted hover:text-ink hover:bg-surface-hover"
               }`}
             >
-              <div className={`text-2xl font-bold ${card.color}`}>
-                {stats[card.field]}
-              </div>
-              <div className="text-xs text-muted mt-1">{card.label}</div>
+              时间 {sortBy === "date" ? (sortDir === "desc" ? "↓" : "↑") : ""}
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* Toolbar */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          {selectedIds.size > 0 && (
             <button
-              onClick={handleBatchClarify}
-              disabled={batchClarifying}
-              className="inline-flex items-center gap-1.5 bg-gold hover:bg-gold-light disabled:opacity-50 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-all"
+              onClick={() => toggleSort("votes")}
+              className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors ${
+                sortBy === "votes" ? "bg-gold-subtle text-gold" : "text-muted hover:text-ink hover:bg-surface-hover"
+              }`}
             >
-              {batchClarifying ? (
-                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-              )}
-              批量 AI 澄清 ({selectedIds.size})
+              票数 {sortBy === "votes" ? (sortDir === "desc" ? "↓" : "↑") : ""}
             </button>
-          )}
-          <button
-            onClick={() => { setShowNewModal(true); setCreateError(null); }}
-            className="inline-flex items-center gap-1.5 bg-paper hover:bg-cream border border-border text-ink text-sm font-medium px-3 py-1.5 rounded-lg transition-all"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            新建想法
-          </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted">排序:</span>
-          <button
-            onClick={() => toggleSort("date")}
-            className={`text-xs px-2 py-1 rounded transition-colors ${
-              sortBy === "date"
-                ? "bg-gold/10 text-gold"
-                : "text-muted hover:text-ink"
-            }`}
-          >
-            时间 {sortBy === "date" ? (sortDir === "desc" ? "↓" : "↑") : ""}
-          </button>
-          <button
-            onClick={() => toggleSort("votes")}
-            className={`text-xs px-2 py-1 rounded transition-colors ${
-              sortBy === "votes"
-                ? "bg-gold/10 text-gold"
-                : "text-muted hover:text-ink"
-            }`}
-          >
-            票数 {sortBy === "votes" ? (sortDir === "desc" ? "↓" : "↑") : ""}
-          </button>
-        </div>
-      </div>
 
-      {/* Ideas Table */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : ideas.length === 0 ? (
-        <div className="text-center py-20 text-muted">
-          <p>暂无想法</p>
-        </div>
-      ) : (
-        <div className="bg-paper rounded-xl border border-border overflow-hidden">
-          {/* Desktop Table */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="w-10 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.size === ideas.length && ideas.length > 0}
-                      onChange={toggleSelectAll}
-                      className="w-4 h-4 rounded border-border text-gold focus:ring-gold/20 cursor-pointer"
-                    />
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">
-                    标题
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">
-                    作者
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">
-                    状态
-                  </th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">
-                    票数
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">
-                    日期
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-medium text-muted uppercase tracking-wider">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {sortedIdeas.map((idea) => {
-                  const statusOpt = STATUS_OPTIONS.find((s) => s.value === idea.status);
-                  return (
+        {/* Table */}
+        {loading ? (
+          <div className="card overflow-hidden">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-5 py-4 border-b border-border last:border-0">
+                <div className="skeleton w-4 h-4 rounded" />
+                <div className="skeleton h-4 flex-1 rounded" />
+                <div className="skeleton h-4 w-16 rounded" />
+                <div className="skeleton h-5 w-14 rounded-full" />
+                <div className="skeleton h-4 w-8 rounded" />
+                <div className="skeleton h-4 w-24 rounded" />
+              </div>
+            ))}
+          </div>
+        ) : ideas.length === 0 ? (
+          <div className="empty-state">
+            <svg className="empty-state-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p className="text-base font-medium text-ink mb-1">暂无需求</p>
+            <p className="text-sm text-muted mb-4">
+              {filterStatus !== "all" ? "该状态下暂无需求" : "还没有人提交需求"}
+            </p>
+            <button
+              onClick={() => { setShowNewModal(true); setCreateError(null); }}
+              className="btn btn-primary text-sm px-4 py-2"
+            >
+              新建需求
+            </button>
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-surface">
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.size === ideas.length && ideas.length > 0}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded border-border text-gold focus:ring-gold/20 cursor-pointer"
+                      />
+                    </th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">标题</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">作者</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">状态</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">票数</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase tracking-wider">时间</th>
+                    <th className="w-16 px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {sortedIdeas.map((idea) => (
                     <tr
                       key={idea.id}
-                      className={`hover:bg-cream/50 transition-colors ${
-                        selectedIds.has(idea.id) ? "bg-gold/5" : ""
-                      }`}
+                      className={`hover:bg-surface transition-colors ${selectedIds.has(idea.id) ? "bg-gold-subtle/50" : ""}`}
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5">
                         <input
                           type="checkbox"
                           checked={selectedIds.has(idea.id)}
@@ -379,68 +331,55 @@ export default function AdminDashboardPage() {
                           className="w-4 h-4 rounded border-border text-gold focus:ring-gold/20 cursor-pointer"
                         />
                       </td>
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/admin/ideas/${idea.id}`}
-                          className="text-sm font-medium text-ink hover:text-gold transition-colors line-clamp-1"
-                        >
-                          {idea.title}
-                        </Link>
-                        {!idea.visible && (
-                          <span className="text-xs text-muted ml-1">(隐藏)</span>
-                        )}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/admin/ideas/${idea.id}`}
+                            className="text-sm font-medium text-ink hover:text-gold transition-colors line-clamp-1 max-w-xs"
+                          >
+                            {idea.title}
+                          </Link>
+                          {!idea.visible && (
+                            <span className="chip text-[10px] px-1.5 py-0.5 flex-shrink-0">隐藏</span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted">
-                        {idea.author_name}
-                      </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3.5 text-sm text-muted whitespace-nowrap">{idea.author_name}</td>
+                      <td className="px-4 py-3.5">
                         <select
                           value={idea.status}
-                          onChange={(e) =>
-                            handleStatusChange(idea.id, e.target.value)
-                          }
-                          className={`text-xs font-medium bg-transparent border-0 p-0 focus:ring-0 cursor-pointer ${statusOpt?.color || "text-muted"}`}
+                          onChange={(e) => handleStatusChange(idea.id, e.target.value)}
+                          className="text-xs font-medium bg-transparent border-0 p-0 focus:ring-0 cursor-pointer text-ink"
                         >
                           {STATUS_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
                           ))}
                         </select>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="text-sm font-medium text-ink">
-                          {idea.votes}
-                        </span>
+                      <td className="px-4 py-3.5 text-center">
+                        <span className="text-sm font-semibold text-ink">{idea.votes}</span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted whitespace-nowrap">
-                        {formatDate(idea.created_at)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3.5 text-xs text-muted whitespace-nowrap">{formatDate(idea.created_at)}</td>
+                      <td className="px-4 py-3.5 text-right">
                         <Link
                           href={`/admin/ideas/${idea.id}`}
-                          className="text-xs text-gold hover:text-gold-light font-medium transition-colors"
+                          className="text-xs font-medium text-gold hover:text-gold-light transition-colors"
                         >
-                          编辑
+                          编辑 →
                         </Link>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-          {/* Mobile Cards */}
-          <div className="md:hidden divide-y divide-border">
-            {sortedIdeas.map((idea) => {
-              const statusOpt = STATUS_OPTIONS.find((s) => s.value === idea.status);
-              return (
+            {/* Mobile Cards */}
+            <div className="md:hidden divide-y divide-border">
+              {sortedIdeas.map((idea) => (
                 <div
                   key={idea.id}
-                  className={`p-4 space-y-2 ${
-                    selectedIds.has(idea.id) ? "bg-gold/5" : ""
-                  }`}
+                  className={`p-4 ${selectedIds.has(idea.id) ? "bg-gold-subtle/50" : ""}`}
                 >
                   <div className="flex items-start gap-3">
                     <input
@@ -450,13 +389,16 @@ export default function AdminDashboardPage() {
                       className="w-4 h-4 rounded border-border text-gold focus:ring-gold/20 cursor-pointer mt-0.5"
                     />
                     <div className="flex-1 min-w-0">
-                      <Link
-                        href={`/admin/ideas/${idea.id}`}
-                        className="text-sm font-medium text-ink hover:text-gold transition-colors block"
-                      >
-                        {idea.title}
-                      </Link>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-muted">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <Link
+                          href={`/admin/ideas/${idea.id}`}
+                          className="text-sm font-medium text-ink hover:text-gold transition-colors"
+                        >
+                          {idea.title}
+                        </Link>
+                        <StatusTag status={idea.status} size="sm" />
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted">
                         <span>{idea.author_name}</span>
                         <span>·</span>
                         <span>{formatDate(idea.created_at)}</span>
@@ -465,119 +407,111 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 pl-7">
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* New Idea Modal */}
+      {showNewModal && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowNewModal(false)}>
+          <div className="modal-content max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="font-serif text-base font-bold text-ink">新建需求</h2>
+              <button
+                onClick={() => setShowNewModal(false)}
+                className="btn btn-ghost p-1.5 rounded-lg"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleCreateIdea} className="p-6 space-y-4">
+              {projects.length > 1 && (
+                <div>
+                  <label className="block text-sm font-medium text-ink mb-1.5">
+                    所属项目 <span className="text-error">*</span>
+                  </label>
+                  {projects.length === 0 ? (
+                    <p className="text-sm text-muted">暂无项目，请先在项目设置中创建</p>
+                  ) : (
                     <select
-                      value={idea.status}
-                      onChange={(e) =>
-                        handleStatusChange(idea.id, e.target.value)
-                      }
-                      className={`text-xs font-medium bg-transparent border-0 p-0 focus:ring-0 cursor-pointer ${statusOpt?.color || "text-muted"}`}
+                      value={newProjectId}
+                      onChange={(e) => setNewProjectId(e.target.value)}
+                      required
+                      className="input-base"
                     >
-                      {STATUS_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}{p.description ? ` — ${p.description}` : ""}
                         </option>
                       ))}
                     </select>
-                    <span className="text-border">·</span>
-                    <Link
-                      href={`/admin/ideas/${idea.id}`}
-                      className="text-xs text-gold hover:text-gold-light font-medium"
-                    >
-                      编辑
-                    </Link>
-                  </div>
+                  )}
                 </div>
-              );
-            })}
+              )}
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">
+                  标题 <span className="text-error">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="简短描述这个需求"
+                  autoFocus
+                  className="input-base"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">
+                  详细描述 <span className="text-error">*</span>
+                </label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="详细说明需求的背景、目标和预期效果..."
+                  rows={5}
+                  className="input-base resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">提交人</label>
+                <input
+                  type="text"
+                  value={newAuthor}
+                  onChange={(e) => setNewAuthor(e.target.value)}
+                  placeholder="留空则显示为「管理员」"
+                  className="input-base"
+                />
+              </div>
+              {createError && (
+                <p className="text-sm text-error">{createError}</p>
+              )}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewModal(false)}
+                  className="btn btn-ghost text-sm px-4 py-2"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newTitle.trim() || !newDescription.trim() || !newProjectId || creating}
+                  className="btn btn-primary text-sm px-5 py-2"
+                >
+                  {creating ? <div className="spinner spinner-sm spinner-white" /> : null}
+                  创建需求
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
-    </div>
-
-    {/* New Idea Modal */}
-    {showNewModal && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div
-          className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-          onClick={() => setShowNewModal(false)}
-        />
-        <div className="relative bg-paper rounded-xl border border-border shadow-lg w-full max-w-lg animate-fade-in">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-            <h2 className="font-serif text-base font-bold text-ink">新建想法</h2>
-            <button
-              onClick={() => setShowNewModal(false)}
-              className="p-1 rounded-lg hover:bg-cream text-muted hover:text-ink transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <form onSubmit={handleCreateIdea} className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">
-                标题 <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="简短描述这个想法"
-                autoFocus
-                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">
-                详细描述 <span className="text-red-400">*</span>
-              </label>
-              <textarea
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                placeholder="详细说明这个想法的背景、目标和预期效果..."
-                rows={5}
-                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all resize-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-ink mb-1.5">
-                提交人
-              </label>
-              <input
-                type="text"
-                value={newAuthor}
-                onChange={(e) => setNewAuthor(e.target.value)}
-                placeholder="留空则显示为「管理员」"
-                className="w-full px-4 py-2.5 rounded-lg bg-cream border border-border text-sm text-ink placeholder:text-muted/50 focus:outline-none focus:border-gold/40 focus:ring-1 focus:ring-gold/20 transition-all"
-              />
-            </div>
-            {createError && (
-              <p className="text-sm text-red-500">{createError}</p>
-            )}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowNewModal(false)}
-                className="px-4 py-2 text-sm text-muted hover:text-ink transition-colors"
-              >
-                取消
-              </button>
-              <button
-                type="submit"
-                disabled={!newTitle.trim() || !newDescription.trim() || creating}
-                className="inline-flex items-center gap-1.5 bg-gold hover:bg-gold-light disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
-              >
-                {creating ? (
-                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : null}
-                创建想法
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    )}
     </>
   );
 }
