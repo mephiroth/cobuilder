@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const projects = await listProjects();
+    const { listActiveProjects } = await import('@/lib/db');
+    const projects = listActiveProjects();
     return Response.json(projects);
   } catch (error) {
     console.error('GET /api/projects error:', error);

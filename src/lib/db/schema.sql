@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   codebase_dir TEXT NOT NULL,
   description TEXT,
+  enable_design_stage INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -24,6 +26,7 @@ CREATE TABLE IF NOT EXISTS ideas (
   source TEXT NOT NULL DEFAULT 'web',
   visible INTEGER NOT NULL DEFAULT 0,
   moderation_status TEXT DEFAULT 'pending',
+  defer_until TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -68,6 +71,8 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
   error TEXT,
   started_at TEXT,
   completed_at TEXT,
+  stage_name TEXT,
+  used_fallback INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -80,6 +85,7 @@ CREATE TABLE IF NOT EXISTS requirement_docs (
   reviewed INTEGER NOT NULL DEFAULT 0,
   review_decision TEXT,
   review_comments TEXT,
+  type TEXT NOT NULL DEFAULT 'prd',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -93,3 +99,41 @@ CREATE INDEX IF NOT EXISTS idx_notifications_client ON notifications(target_clie
 CREATE INDEX IF NOT EXISTS idx_pipeline_idea ON pipeline_runs(idea_id);
 CREATE INDEX IF NOT EXISTS idx_pipeline_stage ON pipeline_runs(stage, status);
 CREATE INDEX IF NOT EXISTS idx_requirement_idea ON requirement_docs(idea_id);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  idea_id TEXT NOT NULL REFERENCES ideas(id),
+  actor_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  from_status TEXT,
+  to_status TEXT,
+  reason TEXT,
+  metadata TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_audit_idea ON audit_logs(idea_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS staging_files (
+  id TEXT PRIMARY KEY,
+  idea_id TEXT NOT NULL REFERENCES ideas(id),
+  rel_path TEXT NOT NULL,
+  modify_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  truncated INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(idea_id, rel_path)
+);
+CREATE INDEX IF NOT EXISTS idx_staging_idea ON staging_files(idea_id);
+
+CREATE TABLE IF NOT EXISTS dev_retry_counts (
+  idea_id TEXT PRIMARY KEY REFERENCES ideas(id),
+  prd_version INTEGER NOT NULL,
+  count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS gate_overdue_reminders (
+  idea_id TEXT PRIMARY KEY REFERENCES ideas(id),
+  reminder_count INTEGER NOT NULL DEFAULT 0,
+  last_sent_at TEXT
+);

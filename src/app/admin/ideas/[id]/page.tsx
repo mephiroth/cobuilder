@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback, use } from "react";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
-import PipelineView from "@/components/PipelineView";
-import RequirementDocViewer from "@/components/RequirementDocViewer";
+import PipelinePanel from "@/components/PipelinePanel";
 import StatusTag from "@/components/StatusTag";
 
 interface Idea {
@@ -71,8 +70,9 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
   const [version, setVersion] = useState("");
   const [visible, setVisible] = useState(false);
 
-  const [clarifying, setClarifying] = useState(false);
-  const [clarifyResult, setClarifyResult] = useState<string | null>(null);
+  const [prd, setPrd] = useState<Record<string, unknown> | null>(null);
+  const [lowConfidenceWarning, setLowConfidenceWarning] = useState(false);
+  const [testDocFailed, setTestDocFailed] = useState(false);
 
   const fetchIdea = useCallback(async () => {
     setLoading(true);
@@ -84,7 +84,10 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
       setIdea(data);
       setDescription(data.description || "");
       setClarificationDoc(data.clarification_doc || "");
-      setStatus(data.status || "pending");
+      setStatus(data.status || "submitted");
+      setPrd(data.prd ?? null);
+      setLowConfidenceWarning(!!data.lowConfidenceWarning);
+      setTestDocFailed(!!data.testDocGenerationFailed);
       setVersion(data.version || "");
       setVisible(data.visible === 1);
 
@@ -121,24 +124,6 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
     }
   };
 
-  const handleClarify = async () => {
-    setClarifying(true);
-    setClarifyResult(null);
-    try {
-      const res = await fetch(`/api/admin/ideas/${ideaId}/clarify`, {
-        method: "POST",
-        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
-      });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "AI 澄清失败"); }
-      const data = await res.json();
-      setClarifyResult(data.clarification || data.content || "澄清完成");
-      fetchIdea();
-    } catch (e) {
-      setClarifyResult(`错误: ${e instanceof Error ? e.message : "AI 澄清失败"}`);
-    } finally {
-      setClarifying(false);
-    }
-  };
 
   const handleDeleteComment = async (commentId: string) => {
     if (!confirm("确定要删除这条评论吗？")) return;
@@ -217,8 +202,15 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Main Content */}
         <div className="lg:col-span-2 space-y-5">
-          {/* Pipeline */}
-          <PipelineView ideaId={ideaId} />
+          <PipelinePanel
+            ideaId={ideaId}
+            status={idea.status}
+            prd={prd}
+            lowConfidenceWarning={lowConfidenceWarning}
+            testDocGenerationFailed={testDocFailed}
+            onRefresh={fetchIdea}
+            getAuthHeaders={getAuthHeaders}
+          />
 
           {/* Description */}
           <div className="card p-5">
@@ -242,23 +234,7 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
 
           {/* Clarification Doc */}
           <div className="card p-5">
-            <div className="flex items-center justify-between mb-3">
-              <label className="text-sm font-semibold text-ink">澄清文档</label>
-              <button
-                onClick={handleClarify}
-                disabled={clarifying}
-                className="btn btn-ghost text-xs text-gold hover:text-gold-light px-2 py-1"
-              >
-                {clarifying ? (
-                  <div className="spinner spinner-sm" />
-                ) : (
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                )}
-                {clarifying ? "AI 澄清中..." : "AI 自动澄清"}
-              </button>
-            </div>
+            <label className="block text-sm font-semibold text-ink mb-3">澄清文档（遗留字段）</label>
             <textarea
               value={clarificationDoc}
               onChange={(e) => setClarificationDoc(e.target.value)}
@@ -266,24 +242,11 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
               rows={8}
               className="input-base font-mono leading-relaxed resize-none"
             />
-            {clarifyResult && (
-              <div className={`mt-3 p-3 rounded-xl border text-xs ${
-                clarifyResult.startsWith("错误")
-                  ? "bg-red-50 border-red-200 text-error"
-                  : "bg-gold-subtle border-gold-border text-gold"
-              }`}>
-                <p className="font-semibold mb-1">
-                  {clarifyResult.startsWith("错误") ? "操作失败" : "AI 澄清完成"}
-                </p>
-                <div className="prose prose-xs max-w-none text-xs">
-                  <ReactMarkdown>{clarifyResult}</ReactMarkdown>
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* Requirement Doc */}
-          <RequirementDocViewer ideaId={ideaId} />
+          {/* TODO(Phase 6): 接入新路由 GET /api/admin/ideas/:id (返回 PRD/UI_Brief/Dev_Plan/Test_Doc)
+              + POST /api/ideas/:id/gate (Gate 1/2/3 决策)，等 Phase 6 任务实现 */}
+          {/* <RequirementDocViewer ideaId={ideaId} /> */}
 
           {/* Comments */}
           <div className="card p-5">

@@ -1,14 +1,9 @@
 import { NextRequest } from 'next/server';
-import { getUnreadNotifications } from '@/lib/db';
-import { verifyAdmin, adminResponse } from '@/lib/auth';
+import { listNotifications } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  if (!verifyAdmin(request)) {
-    return adminResponse('Unauthorized');
-  }
-
   try {
     const { searchParams } = new URL(request.url);
     const client_id = searchParams.get('client_id');
@@ -17,7 +12,11 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: 'client_id query parameter is required' }, { status: 400 });
     }
 
-    const notifications = await getUnreadNotifications(client_id);
+    const unreadOnly = searchParams.get('unread_only') === 'true';
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
+
+    const notifications = listNotifications(client_id, { unreadOnly, limit, offset });
     return Response.json(notifications);
   } catch (error) {
     console.error('GET /api/notifications error:', error);

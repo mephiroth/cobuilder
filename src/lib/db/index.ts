@@ -2,12 +2,13 @@
 import { DatabaseSync } from 'node:sqlite';
 import * as path from 'path';
 import * as fs from 'fs';
+import type { Project, Idea, Comment, Notification, PipelineRun, RequirementDoc } from './types';
 
 const DB_PATH = path.join(process.cwd(), 'data', 'cobuilder.db');
 
 let _db: any = null;
 
-function getDb(): any {
+export function getDb(): any {
   if (_db) return _db;
 
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -18,13 +19,13 @@ function getDb(): any {
   // Create tables
   // Embedded schema - works in both dev and production builds
   const schema = `-- CoBuilder Schema
-CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, codebase_dir TEXT NOT NULL, description TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
-CREATE TABLE IF NOT EXISTS ideas (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', votes INTEGER NOT NULL DEFAULT 0, author_name TEXT NOT NULL DEFAULT '匿名', author_contact TEXT, client_id TEXT, clarification_doc TEXT, version TEXT, screenshots TEXT DEFAULT '[]', source TEXT NOT NULL DEFAULT 'web', visible INTEGER NOT NULL DEFAULT 0, moderation_status TEXT DEFAULT 'pending', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, codebase_dir TEXT NOT NULL, description TEXT, enable_design_stage INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS ideas (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', votes INTEGER NOT NULL DEFAULT 0, author_name TEXT NOT NULL DEFAULT '匿名', author_contact TEXT, client_id TEXT, clarification_doc TEXT, version TEXT, screenshots TEXT DEFAULT '[]', source TEXT NOT NULL DEFAULT 'web', visible INTEGER NOT NULL DEFAULT 0, moderation_status TEXT DEFAULT 'pending', defer_until TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), author_name TEXT NOT NULL DEFAULT '匿名', content TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0, visible INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS votes (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), voter_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(idea_id, voter_id));
 CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), target_client_id TEXT NOT NULL, status TEXT NOT NULL, read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
-CREATE TABLE IF NOT EXISTS pipeline_runs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), stage TEXT NOT NULL, agent_id TEXT, status TEXT NOT NULL DEFAULT 'pending', input_data TEXT, output_data TEXT, error TEXT, started_at TEXT, completed_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
-CREATE TABLE IF NOT EXISTS requirement_docs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), version INTEGER NOT NULL DEFAULT 1, content TEXT NOT NULL, generated_by TEXT, reviewed INTEGER NOT NULL DEFAULT 0, review_decision TEXT, review_comments TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS pipeline_runs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), stage TEXT NOT NULL, agent_id TEXT, status TEXT NOT NULL DEFAULT 'pending', input_data TEXT, output_data TEXT, error TEXT, started_at TEXT, completed_at TEXT, stage_name TEXT, used_fallback INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS requirement_docs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), version INTEGER NOT NULL DEFAULT 1, content TEXT NOT NULL, generated_by TEXT, reviewed INTEGER NOT NULL DEFAULT 0, review_decision TEXT, review_comments TEXT, type TEXT NOT NULL DEFAULT 'prd', created_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE INDEX IF NOT EXISTS idx_ideas_project ON ideas(project_id);
 CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
 CREATE INDEX IF NOT EXISTS idx_ideas_visible ON ideas(visible);
@@ -34,7 +35,13 @@ CREATE INDEX IF NOT EXISTS idx_votes_idea ON votes(idea_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_client ON notifications(target_client_id, read);
 CREATE INDEX IF NOT EXISTS idx_pipeline_idea ON pipeline_runs(idea_id);
 CREATE INDEX IF NOT EXISTS idx_pipeline_stage ON pipeline_runs(stage, status);
-CREATE INDEX IF NOT EXISTS idx_requirement_idea ON requirement_docs(idea_id);`;
+CREATE INDEX IF NOT EXISTS idx_requirement_idea ON requirement_docs(idea_id);
+CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), actor_id TEXT NOT NULL, event_type TEXT NOT NULL, from_status TEXT, to_status TEXT, reason TEXT, metadata TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_audit_idea ON audit_logs(idea_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS staging_files (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), rel_path TEXT NOT NULL, modify_type TEXT NOT NULL, size_bytes INTEGER NOT NULL DEFAULT 0, truncated INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(idea_id, rel_path));
+CREATE INDEX IF NOT EXISTS idx_staging_idea ON staging_files(idea_id);
+CREATE TABLE IF NOT EXISTS dev_retry_counts (idea_id TEXT PRIMARY KEY REFERENCES ideas(id), prd_version INTEGER NOT NULL, count INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS gate_overdue_reminders (idea_id TEXT PRIMARY KEY REFERENCES ideas(id), reminder_count INTEGER NOT NULL DEFAULT 0, last_sent_at TEXT);`;
   const statements = schema.split(';').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
   for (const stmt of statements) {
     try {
@@ -44,66 +51,63 @@ CREATE INDEX IF NOT EXISTS idx_requirement_idea ON requirement_docs(idea_id);`;
     }
   }
 
+  // Idempotent column migrations: add new columns to existing tables.
+  // Only "duplicate column" errors are swallowed (column already added in a previous run).
+  // Any other error (missing table, syntax error, etc.) is rethrown.
+  const columnMigrations: Array<{ table: string; column: string; ddl: string }> = [
+    { table: 'projects',         column: 'enable_design_stage', ddl: "ALTER TABLE projects ADD COLUMN enable_design_stage INTEGER NOT NULL DEFAULT 0" },
+    { table: 'projects',         column: 'archived',            ddl: "ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0" },
+    { table: 'ideas',            column: 'defer_until',         ddl: "ALTER TABLE ideas ADD COLUMN defer_until TEXT" },
+    { table: 'requirement_docs', column: 'type',                ddl: "ALTER TABLE requirement_docs ADD COLUMN type TEXT NOT NULL DEFAULT 'prd'" },
+    { table: 'pipeline_runs',    column: 'stage_name',          ddl: "ALTER TABLE pipeline_runs ADD COLUMN stage_name TEXT" },
+    { table: 'pipeline_runs',    column: 'used_fallback',       ddl: "ALTER TABLE pipeline_runs ADD COLUMN used_fallback INTEGER NOT NULL DEFAULT 0" },
+  ];
+  for (const m of columnMigrations) {
+    try {
+      _db.exec(m.ddl);
+    } catch (err) {
+      const msg = String((err as { message?: string })?.message ?? err).toLowerCase();
+      if (!msg.includes('duplicate column')) {
+        throw err;
+      }
+      // Column already exists, ignore
+    }
+  }
+
+  const { setDbGetter, runSchemaMigrationV2 } = require('./pipeline-db') as typeof import('./pipeline-db');
+  setDbGetter(() => _db);
+  runSchemaMigrationV2(_db);
+
   // Seed default project if empty
   const row = _db.prepare('SELECT COUNT(*) as c FROM projects').get();
   if (row.c === 0) {
-    const codebaseDir = process.env.CODEBASE_DIR || '/Users/gouzh/work/alice';
+    const codebaseDir = process.env.CODEBASE_DIR || process.cwd();
+    const name = process.env.DEFAULT_PROJECT_NAME || 'Default';
     _db.prepare('INSERT INTO projects (id, name, codebase_dir, description) VALUES (?, ?, ?, ?)').run(
-      crypto.randomUUID(), 'Alice', codebaseDir, 'Alice AI Butler 产品'
+      crypto.randomUUID(), name, codebaseDir, null
     );
   }
 
   return _db;
 }
 
-// ===== Types =====
-export interface Project {
-  id: string;
-  name: string;
-  codebase_dir: string;
-  description?: string;
-  created_at: string;
-}
+// Re-export types from types.ts
+export type {
+  Project,
+  Idea,
+  Comment,
+  Notification,
+  PipelineRun,
+  RequirementDoc,
+  LifecycleStatus,
+  DocumentType,
+  PRD,
+  UIBrief,
+  DevPlan,
+  TestDoc,
+} from './types';
 
-export interface Idea {
-  id: string;
-  project_id: string;
-  title: string;
-  description: string;
-  status: string;
-  votes: number;
-  author_name: string;
-  author_contact?: string;
-  client_id?: string;
-  clarification_doc?: string;
-  version?: string;
-  screenshots: string;
-  source: string;
-  visible: number;
-  moderation_status: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Comment {
-  id: string;
-  idea_id: string;
-  author_name: string;
-  content: string;
-  is_admin: number;
-  visible: number;
-  created_at: string;
-}
-
-export interface Notification {
-  id: string;
-  idea_id: string;
-  target_client_id: string;
-  status: string;
-  read: number;
-  created_at: string;
-  idea_title?: string;
-}
+export * from './pipeline-db';
 
 // ===== Projects =====
 export function listProjects(): Project[] {
@@ -145,7 +149,7 @@ export function createIdea(idea: {
   const id = crypto.randomUUID();
   getDb().prepare(`
     INSERT INTO ideas (id, project_id, title, description, status, author_name, author_contact, client_id, screenshots, source)
-    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, 'submitted', ?, ?, ?, ?, ?)
   `).run(
     id, idea.project_id, idea.title, idea.description,
     idea.author_name || '匿名', idea.author_contact || null,
@@ -206,7 +210,7 @@ export function countIdeas(projectId?: string, status?: string): number {
 
 export function updateIdea(id: string, updates: Partial<Idea>): void {
   const ALLOWED = ['title','description','status','votes','author_name','author_contact',
-    'client_id','clarification_doc','version','screenshots','source','visible','moderation_status'];
+    'client_id','clarification_doc','version','screenshots','source','visible','moderation_status','defer_until'];
   const fields = Object.keys(updates).filter(k => ALLOWED.includes(k));
   if (fields.length === 0) return;
   const sets = fields.map(f => `${f} = ?`).join(', ');
@@ -304,20 +308,6 @@ export function getStats(projectId?: string) {
 }
 
 // ===== Pipeline Runs =====
-export interface PipelineRun {
-  id: string;
-  idea_id: string;
-  stage: string;
-  agent_id: string | null;
-  status: string;
-  input_data: string | null;
-  output_data: string | null;
-  error: string | null;
-  started_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-}
-
 export function createPipelineRun(ideaId: string, stage: string, agentId?: string): PipelineRun {
   const id = crypto.randomUUID();
   getDb().prepare(
@@ -333,7 +323,7 @@ export function getPipelineRuns(ideaId: string): PipelineRun[] {
 }
 
 export function updatePipelineRun(id: string, updates: Partial<PipelineRun>): void {
-  const ALLOWED = ['stage','agent_id','status','input_data','output_data','error','started_at','completed_at'];
+  const ALLOWED = ['stage','agent_id','status','input_data','output_data','error','started_at','completed_at','stage_name','used_fallback'];
   const fields = Object.keys(updates).filter(k => ALLOWED.includes(k));
   if (fields.length === 0) return;
   const sets = fields.map(f => `${f} = ?`).join(', ');
@@ -347,31 +337,16 @@ export function getLatestPipelineRun(ideaId: string, stage: string): PipelineRun
   ).get(ideaId, stage) as PipelineRun | undefined;
 }
 
-// ===== Requirement Docs =====
-export interface RequirementDoc {
-  id: string;
-  idea_id: string;
-  version: number;
-  content: string;
-  generated_by: string | null;
-  reviewed: number;
-  review_decision: string | null;
-  review_comments: string | null;
-  created_at: string;
-}
-
+// ===== Requirement Docs (legacy wrappers) =====
 export function createRequirementDoc(ideaId: string, content: string, generatedBy?: string): RequirementDoc {
-  const id = crypto.randomUUID();
-  // Get next version
-  const last = getDb().prepare(
-    'SELECT MAX(version) as v FROM requirement_docs WHERE idea_id = ?'
-  ).get(ideaId) as any;
-  const version = (last?.v || 0) + 1;
-
-  getDb().prepare(
-    'INSERT INTO requirement_docs (id, idea_id, version, content, generated_by) VALUES (?, ?, ?, ?, ?)'
-  ).run(id, ideaId, version, content, generatedBy || null);
-  return getDb().prepare('SELECT * FROM requirement_docs WHERE id = ?').get(id) as RequirementDoc;
+  const { saveDocument } = require('./pipeline-db') as typeof import('./pipeline-db');
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    parsed = { raw: content };
+  }
+  return saveDocument(ideaId, 'prd', parsed, generatedBy);
 }
 
 export function getRequirementDocs(ideaId: string): RequirementDoc[] {

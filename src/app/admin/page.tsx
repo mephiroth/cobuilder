@@ -34,12 +34,13 @@ interface Stats {
 }
 
 const STATUS_OPTIONS = [
-  { value: "pending", label: "待澄清" },
-  { value: "clarified", label: "已澄清" },
-  { value: "in_progress", label: "进行中" },
-  { value: "published", label: "已实现" },
+  { value: "submitted", label: "待启动" },
+  { value: "pending_prd", label: "待审 PRD" },
+  { value: "dev_pending", label: "开发中" },
+  { value: "pending_merge", label: "待合入" },
+  { value: "done", label: "已完成" },
+  { value: "rejected", label: "已驳回" },
   { value: "deferred", label: "已搁置" },
-  { value: "closed", label: "已关闭" },
 ];
 
 const STAT_CARDS = [
@@ -130,19 +131,11 @@ export default function AdminDashboardPage() {
   };
 
   const handleBatchClarify = async () => {
+    // TODO(Phase 6): 接入新路由 POST /api/ideas/:id/pipeline { action: "start" } 批量启动 Stage 1
+    // 暂时禁用批量澄清功能，等 Phase 6 流水线启动接口接入
     if (selectedIds.size === 0 || batchClarifying) return;
-    setBatchClarifying(true);
-    try {
-      const headers = { ...getAuthHeaders(), "Content-Type": "application/json" };
-      await Promise.all(
-        Array.from(selectedIds).map((id) =>
-          fetch(`/api/admin/ideas/${id}/clarify`, { method: "POST", headers })
-        )
-      );
-      setSelectedIds(new Set());
-      fetchData();
-    } catch { /* ignore */ }
-    finally { setBatchClarifying(false); }
+    setBatchClarifying(false);
+    setSelectedIds(new Set());
   };
 
   const sortedIdeas = [...ideas].sort((a, b) => {

@@ -12,6 +12,7 @@ export interface AgentDef {
   version?: string;
 }
 
+/** 顺序与调度优先级一致：hermes > codex > cursor > copilot > gemini > aider */
 const KNOWN_AGENTS: Array<Omit<AgentDef, 'available' | 'version'>> = [
   {
     id: 'hermes',
@@ -22,19 +23,19 @@ const KNOWN_AGENTS: Array<Omit<AgentDef, 'available' | 'version'>> = [
     streamFormat: 'stdout',
   },
   {
-    id: 'cursor',
-    binary: 'cursor-agent',
-    label: 'Cursor Agent',
-    capabilities: ['code_read', 'code_write', 'code_review'],
-    invocation: 'cursor-agent --print --output-format stream-json --force --trust -',
-    streamFormat: 'json',
-  },
-  {
     id: 'codex',
     binary: 'codex',
     label: 'Codex CLI',
     capabilities: ['code_read', 'code_write'],
     invocation: 'codex exec --json --skip-git-repo-check -c sandbox_workspace_write.network_access=true "{prompt}"',
+    streamFormat: 'json',
+  },
+  {
+    id: 'cursor',
+    binary: 'cursor-agent',
+    label: 'Cursor Agent',
+    capabilities: ['code_read', 'code_write', 'code_review'],
+    invocation: 'cursor-agent --print --output-format stream-json --force --trust -',
     streamFormat: 'json',
   },
   {
