@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --import tsx --test src/lib/pipeline/state-machine.test.ts"
+    "test": "node --import tsx --test --test-concurrency=1 'src/lib/**/*.test.ts'"
   },
   "dependencies": {
     "@types/sql.js": "^1.4.11",

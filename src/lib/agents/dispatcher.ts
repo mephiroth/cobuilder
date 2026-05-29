@@ -26,7 +26,14 @@ function getAgentsCached(): AgentDef[] {
   return _agentCache;
 }
 
+let _selectAgentOverride: (() => AgentDef | null) | undefined;
+
+export function setSelectBestAgentForTests(fn: (() => AgentDef | null) | undefined): void {
+  _selectAgentOverride = fn;
+}
+
 export function selectBestAgent(): AgentDef | null {
+  if (_selectAgentOverride) return _selectAgentOverride();
   const agents = getAgentsCached();
   for (const id of AGENT_PRIORITY) {
     const a = agents.find((x) => x.id === id && x.available);

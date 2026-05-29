@@ -1,11 +1,21 @@
 import OpenAI from 'openai';
 
-const mimo = new OpenAI({
-  apiKey: process.env.MIMO_API_KEY,
-  baseURL: 'https://token-plan-sgp.xiaomimimo.com/v1',
-});
+let _mimo: OpenAI | null = null;
 
-export default mimo;
+export function getMimoClient(): OpenAI {
+  if (_mimoTestHook) {
+    throw new Error('getMimoClient called while test hook active');
+  }
+  if (!_mimo) {
+    _mimo = new OpenAI({
+      apiKey: process.env.MIMO_API_KEY,
+      baseURL: 'https://token-plan-sgp.xiaomimimo.com/v1',
+    });
+  }
+  return _mimo;
+}
+
+export default getMimoClient;
 
 export const MODELS = {
   clarify: 'mimo-v2.5-pro',
@@ -22,15 +32,24 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+let _mimoTestHook: ((prompt: string, model: string, system?: string) => Promise<string>) | null = null;
+
+export function setMimoTestHook(
+  fn: ((prompt: string, model: string, system?: string) => Promise<string>) | null
+): void {
+  _mimoTestHook = fn;
+}
+
 export async function callMimoJson(
   prompt: string,
   model: string = MODELS.pm,
   system?: string
 ): Promise<string> {
+  if (_mimoTestHook) return _mimoTestHook(prompt, model, system);
   if (!process.env.MIMO_API_KEY) {
     throw new Error('MIMO_API_KEY 未配置');
   }
-  const res = await mimo.chat.completions.create({
+  const res = await getMimoClient().chat.completions.create({
     model,
     messages: [
       ...(system ? [{ role: 'system' as const, content: system }] : []),

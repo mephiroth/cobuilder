@@ -1,4 +1,4 @@
-import mimo, { MODELS } from './client';
+import { getMimoClient, MODELS } from './client';
 
 export interface ModerateResult {
   approved: boolean;
@@ -10,7 +10,7 @@ export async function moderateContent(
   _images?: string[]
 ): Promise<ModerateResult> {
   try {
-    const response = await mimo.chat.completions.create({
+    const response = await getMimoClient().chat.completions.create({
       model: MODELS.moderate,
       messages: [{
         role: 'user',

@@ -25,12 +25,12 @@ interface Project {
 
 interface Stats {
   total: number;
-  pending_count: number;
-  clarified_count: number;
-  in_progress_count: number;
-  published_count: number;
+  submitted_count: number;
+  review_count: number;
+  pipeline_count: number;
+  done_count: number;
   deferred_count: number;
-  closed_count: number;
+  rejected_count: number;
 }
 
 const STATUS_OPTIONS = [
@@ -43,14 +43,24 @@ const STATUS_OPTIONS = [
   { value: "deferred", label: "已搁置" },
 ];
 
+const STATUS_GROUPS: Record<string, string[] | null> = {
+  all: null,
+  submitted: ["submitted"],
+  review: ["analyzing", "pending_prd", "designing", "pending_design"],
+  pipeline: ["dev_pending", "testing", "pending_merge"],
+  done: ["done"],
+  deferred: ["deferred"],
+  rejected: ["rejected"],
+};
+
 const STAT_CARDS = [
   { key: "all", label: "全部", field: "total" as keyof Stats, color: "text-ink" },
-  { key: "pending", label: "待澄清", field: "pending_count" as keyof Stats, color: "text-amber-600" },
-  { key: "clarified", label: "已澄清", field: "clarified_count" as keyof Stats, color: "text-blue-600" },
-  { key: "in_progress", label: "进行中", field: "in_progress_count" as keyof Stats, color: "text-amber-600" },
-  { key: "published", label: "已实现", field: "published_count" as keyof Stats, color: "text-green-600" },
+  { key: "submitted", label: "待启动", field: "submitted_count" as keyof Stats, color: "text-amber-600" },
+  { key: "review", label: "评审中", field: "review_count" as keyof Stats, color: "text-blue-600" },
+  { key: "pipeline", label: "流水线", field: "pipeline_count" as keyof Stats, color: "text-amber-600" },
+  { key: "done", label: "已完成", field: "done_count" as keyof Stats, color: "text-green-600" },
   { key: "deferred", label: "已搁置", field: "deferred_count" as keyof Stats, color: "text-gray-500" },
-  { key: "closed", label: "已关闭", field: "closed_count" as keyof Stats, color: "text-gray-500" },
+  { key: "rejected", label: "已驳回", field: "rejected_count" as keyof Stats, color: "text-gray-500" },
 ];
 
 function getAuthHeaders(): Record<string, string> {
@@ -90,7 +100,7 @@ export default function AdminDashboardPage() {
       const headers = getAuthHeaders();
       const [statsRes, ideasRes, projectsRes] = await Promise.all([
         fetch("/api/admin/stats", { headers }),
-        fetch(`/api/admin/ideas${filterStatus !== "all" ? `?status=${filterStatus}` : ""}`, { headers }),
+        fetch("/api/admin/ideas", { headers }),
         fetch("/api/projects", { headers }),
       ]);
 
@@ -103,7 +113,7 @@ export default function AdminDashboardPage() {
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
-  }, [filterStatus]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -130,15 +140,33 @@ export default function AdminDashboardPage() {
     setSelectedIds(selectedIds.size === ideas.length ? new Set() : new Set(ideas.map((i) => i.id)));
   };
 
-  const handleBatchClarify = async () => {
-    // TODO(Phase 6): 接入新路由 POST /api/ideas/:id/pipeline { action: "start" } 批量启动 Stage 1
-    // 暂时禁用批量澄清功能，等 Phase 6 流水线启动接口接入
+  const handleBatchStart = async () => {
     if (selectedIds.size === 0 || batchClarifying) return;
-    setBatchClarifying(false);
-    setSelectedIds(new Set());
+    setBatchClarifying(true);
+    const headers = { ...getAuthHeaders(), "Content-Type": "application/json" };
+    try {
+      for (const id of selectedIds) {
+        const idea = ideas.find((i) => i.id === id);
+        if (!idea || !["submitted", "rejected", "deferred"].includes(idea.status)) continue;
+        await fetch(`/api/ideas/${id}/pipeline`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ action: "start" }),
+        });
+      }
+      await fetchData();
+      setSelectedIds(new Set());
+    } finally {
+      setBatchClarifying(false);
+    }
   };
 
-  const sortedIdeas = [...ideas].sort((a, b) => {
+  const filteredIdeas =
+    filterStatus === "all" || !STATUS_GROUPS[filterStatus]
+      ? ideas
+      : ideas.filter((i) => STATUS_GROUPS[filterStatus]!.includes(i.status));
+
+  const sortedIdeas = [...filteredIdeas].sort((a, b) => {
     if (sortBy === "votes") return sortDir === "desc" ? b.votes - a.votes : a.votes - b.votes;
     return sortDir === "desc"
       ? new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -211,7 +239,7 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-2 flex-wrap">
             {selectedIds.size > 0 && (
               <button
-                onClick={handleBatchClarify}
+                onClick={handleBatchStart}
                 disabled={batchClarifying}
                 className="btn btn-primary text-sm px-3 py-1.5"
               >
@@ -222,7 +250,7 @@ export default function AdminDashboardPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                   </svg>
                 )}
-                AI 澄清 ({selectedIds.size})
+                批量启动 ({selectedIds.size})
               </button>
             )}
             <button

@@ -11,8 +11,9 @@ export async function generateDiff(
   codebaseDir: string
 ): Promise<{ diff: string; fileCount: number; truncatedFiles: string[] }> {
   const stagingDir = path.join(codebaseDir, '.cobuilder', 'staging', ideaId);
+  const truncatedFiles = getTruncatedStagingPaths(ideaId);
   if (!fs.existsSync(stagingDir)) {
-    return { diff: '', fileCount: 0, truncatedFiles: [] };
+    return { diff: '', fileCount: 0, truncatedFiles };
   }
 
   let stdout = '';
@@ -34,6 +35,6 @@ export async function generateDiff(
   return {
     diff: stdout,
     fileCount: files.filter((f: { modify_type: string }) => f.modify_type !== 'delete').length,
-    truncatedFiles: getTruncatedStagingPaths(ideaId),
+    truncatedFiles,
   };
 }

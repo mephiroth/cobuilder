@@ -257,10 +257,9 @@ export function listStagingFiles(ideaId: string) {
 }
 
 export function getTruncatedStagingPaths(ideaId: string): string[] {
-  const rows = getDbRef()
-    .prepare('SELECT rel_path FROM staging_files WHERE idea_id = ? AND truncated = 1')
-    .all(ideaId) as { rel_path: string }[];
-  return rows.map((r) => r.rel_path);
+  return listStagingFiles(ideaId)
+    .filter((f: { truncated: number }) => Number(f.truncated) !== 0)
+    .map((f: { rel_path: string }) => f.rel_path);
 }
 
 export function listNotifications(

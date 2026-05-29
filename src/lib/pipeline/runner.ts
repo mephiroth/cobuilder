@@ -1,4 +1,40 @@
+import { createNotification, getIdea } from '@/lib/db';
+import { transitionIdeaInTransaction, writeAuditLog } from '@/lib/db/pipeline-db';
+import { getDb } from '@/lib/db';
+import type { LifecycleStatus } from '@/lib/db/types';
 import { TimeoutError } from './errors';
+
+export function revertOnTimeout(
+  ideaId: string,
+  from: LifecycleStatus,
+  to: LifecycleStatus,
+  reason: string
+): void {
+  const idea = getIdea(ideaId);
+  if (!idea || idea.status !== from) return;
+  transitionIdeaInTransaction(ideaId, from, to, 'system', {
+    reason,
+    eventType: 'stage_timeout',
+  });
+  createNotification(ideaId, 'admin', 'stage_failed');
+}
+
+export function recordStageTimeout(
+  ideaId: string,
+  atStatus: LifecycleStatus,
+  reason: string
+): void {
+  const db = getDb();
+  writeAuditLog(db, {
+    ideaId,
+    actorId: 'system',
+    eventType: 'stage_timeout',
+    from: atStatus,
+    to: atStatus,
+    reason,
+  });
+  createNotification(ideaId, 'admin', 'stage_failed');
+}
 
 export async function runWithTimeout<T>(
   fn: () => Promise<T>,

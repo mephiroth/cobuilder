@@ -31,9 +31,16 @@ export async function startPipeline(
 ): Promise<{ status: LifecycleStatus }> {
   const idea = getIdea(ideaId);
   if (!idea) throw new ValidationError('Idea 不存在');
-  const from = idea.status as LifecycleStatus;
+  let from = idea.status as LifecycleStatus;
   if (!['submitted', 'rejected', 'deferred'].includes(from)) {
     throw new ValidationError('当前状态不可启动流水线');
+  }
+
+  if (from === 'deferred') {
+    transitionIdeaInTransaction(ideaId, 'deferred', 'submitted', actorId === 'admin' ? 'admin' : 'system', {
+      eventType: 'pipeline_reopened',
+    });
+    from = 'submitted';
   }
 
   const dbStatus: LifecycleStatus = 'analyzing';

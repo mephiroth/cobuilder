@@ -35,12 +35,17 @@ interface Comment {
 }
 
 const STATUS_OPTIONS = [
-  { value: "pending", label: "待澄清" },
-  { value: "clarified", label: "已澄清" },
-  { value: "in_progress", label: "进行中" },
-  { value: "published", label: "已实现" },
+  { value: "submitted", label: "待启动" },
+  { value: "analyzing", label: "分析中" },
+  { value: "pending_prd", label: "待审 PRD" },
+  { value: "designing", label: "设计中" },
+  { value: "pending_design", label: "待审设计" },
+  { value: "dev_pending", label: "开发中" },
+  { value: "testing", label: "测试中" },
+  { value: "pending_merge", label: "待合入" },
+  { value: "done", label: "已完成" },
+  { value: "rejected", label: "已驳回" },
   { value: "deferred", label: "已搁置" },
-  { value: "closed", label: "已关闭" },
 ];
 
 function getAuthHeaders(): Record<string, string> {
@@ -71,6 +76,9 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
   const [visible, setVisible] = useState(false);
 
   const [prd, setPrd] = useState<Record<string, unknown> | null>(null);
+  const [uiBrief, setUiBrief] = useState<Record<string, unknown> | null>(null);
+  const [devPlan, setDevPlan] = useState<Record<string, unknown> | null>(null);
+  const [testDoc, setTestDoc] = useState<Record<string, unknown> | null>(null);
   const [lowConfidenceWarning, setLowConfidenceWarning] = useState(false);
   const [testDocFailed, setTestDocFailed] = useState(false);
 
@@ -86,6 +94,9 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
       setClarificationDoc(data.clarification_doc || "");
       setStatus(data.status || "submitted");
       setPrd(data.prd ?? null);
+      setUiBrief(data.uiBrief ?? null);
+      setDevPlan(data.devPlan ?? null);
+      setTestDoc(data.testDoc ?? null);
       setLowConfidenceWarning(!!data.lowConfidenceWarning);
       setTestDocFailed(!!data.testDocGenerationFailed);
       setVersion(data.version || "");
@@ -206,6 +217,9 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
             ideaId={ideaId}
             status={idea.status}
             prd={prd}
+            uiBrief={uiBrief}
+            devPlan={devPlan}
+            testDoc={testDoc}
             lowConfidenceWarning={lowConfidenceWarning}
             testDocGenerationFailed={testDocFailed}
             onRefresh={fetchIdea}
@@ -243,10 +257,6 @@ export default function AdminIdeaEditorPage(props: { params: Promise<{ id: strin
               className="input-base font-mono leading-relaxed resize-none"
             />
           </div>
-
-          {/* TODO(Phase 6): 接入新路由 GET /api/admin/ideas/:id (返回 PRD/UI_Brief/Dev_Plan/Test_Doc)
-              + POST /api/ideas/:id/gate (Gate 1/2/3 决策)，等 Phase 6 任务实现 */}
-          {/* <RequirementDocViewer ideaId={ideaId} /> */}
 
           {/* Comments */}
           <div className="card p-5">

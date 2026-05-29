@@ -21,8 +21,8 @@ import { stage1 } from './stage1-pm';
 import { stage2 } from './stage2-design';
 import { stage3 } from './stage3-dev';
 import { stage4 } from './stage4-test';
-import { runWithTimeout } from './runner';
-import { TaskTooLargeError } from './errors';
+import { runWithTimeout, revertOnTimeout, recordStageTimeout } from './runner';
+import { TaskTooLargeError, TimeoutError } from './errors';
 import type { StageInput } from './stage-types';
 
 function buildInput(ideaId: string): StageInput | null {
@@ -68,12 +68,16 @@ export async function runStage1(ideaId: string): Promise<void> {
     await completeStage(ideaId, 'analyzing', 'pending_prd', () =>
       notifyAdmin(ideaId, 'gate1_waiting')
     );
-  } catch {
-    transitionIdeaInTransaction(ideaId, 'analyzing', 'submitted', 'system', {
-      reason: 'AI 服务暂时不可用，请稍后重试',
-      eventType: 'stage_failed',
-    });
-    notifyAdmin(ideaId, 'stage_failed');
+  } catch (e) {
+    if (e instanceof TimeoutError) {
+      revertOnTimeout(ideaId, 'analyzing', 'submitted', e.message);
+    } else {
+      transitionIdeaInTransaction(ideaId, 'analyzing', 'submitted', 'system', {
+        reason: 'AI 服务暂时不可用，请稍后重试',
+        eventType: 'stage_failed',
+      });
+      notifyAdmin(ideaId, 'stage_failed');
+    }
   }
 }
 
@@ -90,8 +94,11 @@ export async function runStage2(ideaId: string): Promise<void> {
     await completeStage(ideaId, 'designing', 'pending_design', () =>
       notifyAdmin(ideaId, 'gate2_waiting')
     );
-  } catch {
-    if (getIdea(ideaId)?.status === 'designing') {
+  } catch (e) {
+    if (getIdea(ideaId)?.status !== 'designing') return;
+    if (e instanceof TimeoutError) {
+      revertOnTimeout(ideaId, 'designing', 'pending_prd', e.message);
+    } else {
       transitionIdeaInTransaction(ideaId, 'designing', 'pending_prd', 'system', {
         eventType: 'stage_failed',
       });
@@ -122,6 +129,10 @@ export async function runStage3(ideaId: string): Promise<void> {
         eventType: 'stage_failed',
       });
       notifyAdmin(ideaId, 'stage_failed');
+      return;
+    }
+    if (e instanceof TimeoutError) {
+      recordStageTimeout(ideaId, 'dev_pending', e.message);
       return;
     }
     notifyAdmin(ideaId, 'stage_failed');

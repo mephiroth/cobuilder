@@ -1,0 +1,57 @@
+// @ts-ignore
+import type { DatabaseSync } from 'node:sqlite';
+
+export const EMBEDDED_SCHEMA = `-- CoBuilder Schema
+CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, codebase_dir TEXT NOT NULL, description TEXT, enable_design_stage INTEGER NOT NULL DEFAULT 0, archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS ideas (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', votes INTEGER NOT NULL DEFAULT 0, author_name TEXT NOT NULL DEFAULT '匿名', author_contact TEXT, client_id TEXT, clarification_doc TEXT, version TEXT, screenshots TEXT DEFAULT '[]', source TEXT NOT NULL DEFAULT 'web', visible INTEGER NOT NULL DEFAULT 0, moderation_status TEXT DEFAULT 'pending', defer_until TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), author_name TEXT NOT NULL DEFAULT '匿名', content TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0, visible INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS votes (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), voter_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(idea_id, voter_id));
+CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), target_client_id TEXT NOT NULL, status TEXT NOT NULL, read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS pipeline_runs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), stage TEXT NOT NULL, agent_id TEXT, status TEXT NOT NULL DEFAULT 'pending', input_data TEXT, output_data TEXT, error TEXT, started_at TEXT, completed_at TEXT, stage_name TEXT, used_fallback INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS requirement_docs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), version INTEGER NOT NULL DEFAULT 1, content TEXT NOT NULL, generated_by TEXT, reviewed INTEGER NOT NULL DEFAULT 0, review_decision TEXT, review_comments TEXT, type TEXT NOT NULL DEFAULT 'prd', created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_ideas_project ON ideas(project_id);
+CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
+CREATE INDEX IF NOT EXISTS idx_ideas_visible ON ideas(visible);
+CREATE INDEX IF NOT EXISTS idx_ideas_votes ON ideas(votes DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_idea ON comments(idea_id);
+CREATE INDEX IF NOT EXISTS idx_votes_idea ON votes(idea_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_client ON notifications(target_client_id, read);
+CREATE INDEX IF NOT EXISTS idx_pipeline_idea ON pipeline_runs(idea_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_stage ON pipeline_runs(stage, status);
+CREATE INDEX IF NOT EXISTS idx_requirement_idea ON requirement_docs(idea_id);
+CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), actor_id TEXT NOT NULL, event_type TEXT NOT NULL, from_status TEXT, to_status TEXT, reason TEXT, metadata TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE INDEX IF NOT EXISTS idx_audit_idea ON audit_logs(idea_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS staging_files (id TEXT PRIMARY KEY, idea_id TEXT NOT NULL REFERENCES ideas(id), rel_path TEXT NOT NULL, modify_type TEXT NOT NULL, size_bytes INTEGER NOT NULL DEFAULT 0, truncated INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(idea_id, rel_path));
+CREATE INDEX IF NOT EXISTS idx_staging_idea ON staging_files(idea_id);
+CREATE TABLE IF NOT EXISTS dev_retry_counts (idea_id TEXT PRIMARY KEY REFERENCES ideas(id), prd_version INTEGER NOT NULL, count INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS gate_overdue_reminders (idea_id TEXT PRIMARY KEY REFERENCES ideas(id), reminder_count INTEGER NOT NULL DEFAULT 0, last_sent_at TEXT);`;
+
+const COLUMN_MIGRATIONS = [
+  { ddl: "ALTER TABLE projects ADD COLUMN enable_design_stage INTEGER NOT NULL DEFAULT 0" },
+  { ddl: "ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0" },
+  { ddl: "ALTER TABLE ideas ADD COLUMN defer_until TEXT" },
+  { ddl: "ALTER TABLE requirement_docs ADD COLUMN type TEXT NOT NULL DEFAULT 'prd'" },
+  { ddl: "ALTER TABLE pipeline_runs ADD COLUMN stage_name TEXT" },
+  { ddl: "ALTER TABLE pipeline_runs ADD COLUMN used_fallback INTEGER NOT NULL DEFAULT 0" },
+];
+
+export function applySchemaToDb(db: DatabaseSync): void {
+  const statements = EMBEDDED_SCHEMA.split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  for (const stmt of statements) {
+    try {
+      db.exec(stmt);
+    } catch {
+      /* table exists */
+    }
+  }
+  for (const m of COLUMN_MIGRATIONS) {
+    try {
+      db.exec(m.ddl);
+    } catch (err) {
+      const msg = String((err as { message?: string })?.message ?? err).toLowerCase();
+      if (!msg.includes('duplicate column')) throw err;
+    }
+  }
+}
