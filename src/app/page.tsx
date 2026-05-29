@@ -118,7 +118,7 @@ export default function HomePage() {
       {/* Hero */}
       <header className="pt-24 pb-10 px-4 sm:px-6 max-w-5xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-subtle border border-gold-border text-xs font-medium text-gold mb-4">
               <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
               AI 驱动的需求管理
@@ -126,7 +126,7 @@ export default function HomePage() {
             <h1 className="font-serif text-4xl sm:text-5xl font-bold text-ink leading-tight mb-3">
               需求管理池
             </h1>
-            <p className="text-muted text-base sm:text-lg max-w-md">
+            <p className="text-muted text-base sm:text-lg">
               提交你的想法，AI 自动分析并生成结构化需求文档
             </p>
           </div>
