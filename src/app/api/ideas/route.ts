@@ -3,7 +3,6 @@ import {
   listIdeas,
   countComments,
   createIdea,
-  getDefaultActiveProject,
   getProject,
   createNotification,
 } from "@/lib/db";
@@ -60,22 +59,19 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "description 最多 2000 字符" }, { status: 400 });
     }
 
-    let projectId = project_id;
-    if (!projectId) {
-      const def = getDefaultActiveProject();
-      if (!def) {
-        return Response.json({ error: "暂无可用项目" }, { status: 400 });
-      }
-      projectId = def.id;
+    if (!project_id?.trim()) {
+      return Response.json({ error: "project_id 为必填项" }, { status: 400 });
     }
 
-    const project = getProject(projectId);
+    const project = getProject(project_id);
     if (!project) {
-      return Response.json({ error: "Project not found" }, { status: 404 });
+      return Response.json({ error: "项目不存在" }, { status: 404 });
     }
     if (project.archived) {
       return Response.json({ error: "项目已归档" }, { status: 400 });
     }
+
+    const projectId = project_id;
 
     const idea = createIdea({
       project_id: projectId,

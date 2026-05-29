@@ -25,11 +25,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!verifyAdmin(request)) return adminResponse("Unauthorized");
 
-  const { createIdea, listProjects } = await import("@/lib/db");
+  const { createIdea } = await import("@/lib/db");
 
   try {
     const body = await request.json();
     const { title, description, author_name, project_id } = body;
+
+    if (!project_id?.trim()) {
+      return Response.json(
+        { error: "project_id 为必填项" },
+        { status: 400 }
+      );
+    }
 
     if (!title?.trim() || !description?.trim()) {
       return Response.json(
@@ -38,18 +45,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use provided project_id or fall back to first project
-    let targetProjectId = project_id;
-    if (!targetProjectId) {
-      const projects = listProjects();
-      if (projects.length === 0) {
-        return Response.json({ error: "No projects found" }, { status: 404 });
-      }
-      targetProjectId = projects[0].id;
-    }
-
     const idea = createIdea({
-      project_id: targetProjectId,
+      project_id: project_id.trim(),
       title: title.trim(),
       description: description.trim(),
       author_name: author_name?.trim() || "管理员",

@@ -648,9 +648,10 @@ body {
   backdrop-filter: blur(4px);
   z-index: 50;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
+  overflow-y: auto;
 }
 
 .modal-content {
@@ -659,6 +660,9 @@ body {
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   width: 100%;
+  margin: auto;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   animation: fadeInScale 0.2s ease-out;
 }
 

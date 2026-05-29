@@ -21,6 +21,7 @@ export default function SubmitPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [projectsLoadError, setProjectsLoadError] = useState(false);
   const [activeTab, setActiveTab] = useState<"write" | "preview">("write");
 
   useEffect(() => {
@@ -30,9 +31,10 @@ export default function SubmitPage() {
         if (!res.ok) throw new Error("加载项目失败");
         const data = await res.json();
         setProjects(data);
+        // 只有一个项目时自动预选，多个项目时不预选
         if (data.length === 1) setSelectedProject(data[0].id);
       } catch {
-        setError("加载项目列表失败");
+        setProjectsLoadError(true);
       } finally {
         setLoadingProjects(false);
       }
@@ -74,7 +76,7 @@ export default function SubmitPage() {
     }
   };
 
-  const isValid = selectedProject && title.trim() && description.trim();
+  const isValid = selectedProject && title.trim() && description.trim() && !projectsLoadError && projects.length > 0;
 
   return (
     <div className="min-h-screen bg-cream">
@@ -110,39 +112,51 @@ export default function SubmitPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Project Selector */}
-          {(projects.length > 1 || loadingProjects) && (
-            <div className="card p-5">
-              <label className="block text-sm font-semibold text-ink mb-3">
-                所属项目
-                <span className="text-error ml-1">*</span>
-              </label>
-              {loadingProjects ? (
-                <div className="skeleton h-10 rounded-lg" />
-              ) : (
-                <div className="relative">
-                  <select
-                    value={selectedProject}
-                    onChange={(e) => setSelectedProject(e.target.value)}
-                    required
-                    className="input-base appearance-none pr-10"
-                  >
-                    <option value="">请选择项目...</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}{p.description ? ` — ${p.description}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-                    <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
+          {/* Project Selector — 始终展示 */}
+          <div className="card p-5">
+            <label className="block text-sm font-semibold text-ink mb-3">
+              所属项目
+              <span className="text-error ml-1">*</span>
+            </label>
+            {loadingProjects ? (
+              <div className="skeleton h-10 rounded-lg" />
+            ) : projectsLoadError ? (
+              <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-200">
+                <svg className="w-4 h-4 text-error flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm text-error">加载项目列表失败，请刷新重试</p>
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+                <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                <p className="text-sm text-amber-700">暂无可用项目，请联系管理员</p>
+              </div>
+            ) : (
+              <div className="relative">
+                <select
+                  value={selectedProject}
+                  onChange={(e) => setSelectedProject(e.target.value)}
+                  required
+                  className="input-base appearance-none pr-10"
+                >
+                  {projects.length > 1 && <option value="">请选择项目...</option>}
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.description ? ` — ${p.description}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                  <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
 
           {/* Title */}
           <div className="card p-5">

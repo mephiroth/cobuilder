@@ -1,9 +1,21 @@
 import { NextRequest } from 'next/server';
 import { verifyAdmin, adminResponse } from '@/lib/auth';
-import { createProject } from '@/lib/db';
+import { createProject, listProjects } from '@/lib/db';
 import * as path from 'path';
 
 export const dynamic = 'force-dynamic';
+
+export async function GET(request: NextRequest) {
+  if (!verifyAdmin(request)) return adminResponse('Unauthorized');
+
+  try {
+    const projects = listProjects();
+    return Response.json(projects);
+  } catch (error) {
+    console.error('GET /api/admin/projects error:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
 
 export async function POST(request: NextRequest) {
   if (!verifyAdmin(request)) return adminResponse('Unauthorized');

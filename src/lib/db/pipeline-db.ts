@@ -109,10 +109,16 @@ export function updateProjectExtended(
   updates: Partial<Pick<Project, 'name' | 'codebase_dir' | 'description' | 'enable_design_stage' | 'archived'>>
 ): void {
   const ALLOWED = ['name', 'codebase_dir', 'description', 'enable_design_stage', 'archived'];
-  const fields = Object.keys(updates).filter((k) => ALLOWED.includes(k));
+  const fields = Object.keys(updates).filter(
+    (k) => ALLOWED.includes(k) && (updates as Record<string, unknown>)[k] !== undefined
+  );
   if (fields.length === 0) return;
   const sets = fields.map((f) => `${f} = ?`).join(', ');
-  const values = fields.map((f) => (updates as Record<string, unknown>)[f]);
+  const values = fields.map((f) => {
+    const v = (updates as Record<string, unknown>)[f];
+    if (f === 'description' && v === '') return null;
+    return v;
+  });
   getDbRef().prepare(`UPDATE projects SET ${sets} WHERE id = ?`).run(...values, id);
 }
 

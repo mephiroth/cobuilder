@@ -109,7 +109,9 @@ export default function AdminDashboardPage() {
       if (projectsRes.ok) {
         const projectsData: Project[] = await projectsRes.json();
         setProjects(projectsData);
-        if (projectsData.length > 0) setNewProjectId((prev) => prev || projectsData[0].id);
+        // 只有一个项目时自动预选，多个项目时不预选（要求用户明确选择）
+        if (projectsData.length === 1) setNewProjectId(projectsData[0].id);
+        else setNewProjectId("");
       }
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -451,29 +453,34 @@ export default function AdminDashboardPage() {
               </button>
             </div>
             <form onSubmit={handleCreateIdea} className="p-6 space-y-4">
-              {projects.length > 1 && (
-                <div>
-                  <label className="block text-sm font-medium text-ink mb-1.5">
-                    所属项目 <span className="text-error">*</span>
-                  </label>
-                  {projects.length === 0 ? (
-                    <p className="text-sm text-muted">暂无项目，请先在项目设置中创建</p>
-                  ) : (
-                    <select
-                      value={newProjectId}
-                      onChange={(e) => setNewProjectId(e.target.value)}
-                      required
-                      className="input-base"
-                    >
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}{p.description ? ` — ${p.description}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
+              {/* 所属项目 — 始终展示 */}
+              <div>
+                <label className="block text-sm font-medium text-ink mb-1.5">
+                  所属项目 <span className="text-error">*</span>
+                </label>
+                {projects.length === 0 ? (
+                  <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200">
+                    <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <p className="text-sm text-amber-700">暂无可用项目，请先在项目设置中创建项目</p>
+                  </div>
+                ) : (
+                  <select
+                    value={newProjectId}
+                    onChange={(e) => setNewProjectId(e.target.value)}
+                    required
+                    className="input-base"
+                  >
+                    {projects.length > 1 && <option value="">请选择项目...</option>}
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}{p.description ? ` — ${p.description}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-ink mb-1.5">
                   标题 <span className="text-error">*</span>
